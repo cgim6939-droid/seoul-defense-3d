@@ -1,3 +1,5 @@
 .build_check.mjs
 node_modules/
 .vercel/
+
+.vercel

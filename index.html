@@ -3038,7 +3038,10 @@ function noiseCanvas(base, specks, size = 256) {
 }
 function buildViewmodels() {
   const T = {
-    metal: canvasTex(256, 256, noiseCanvas('#3c3f44', [['rgba(255,255,255,0.05)', 2500, 1, 2], ['rgba(0,0,0,0.12)', 1500, 1, 3], ['rgba(160,165,170,0.25)', 120, 1, 4]])),
+    metal: canvasTex(256, 256, (g) => {
+      noiseCanvas('#3f444b', [['rgba(255,255,255,0.07)', 2600, 1, 2], ['rgba(0,0,0,0.14)', 1500, 1, 3], ['rgba(190,196,204,0.3)', 160, 1, 4]])(g);
+      for (let i = 0; i < 70; i++) { g.strokeStyle = `rgba(${200 + Math.random() * 55},${205 + Math.random() * 50},215,${0.1 + Math.random() * 0.25})`; g.lineWidth = 0.5 + Math.random() * 0.8; g.beginPath(); const x = Math.random() * 256, y = Math.random() * 256, a = Math.random() * 6.28, l = 6 + Math.random() * 28; g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); }
+    }),
     metalR: canvasTex(128, 128, noiseCanvas('#909090', [['rgba(40,40,40,0.4)', 300, 1, 5], ['rgba(220,220,220,0.3)', 400, 1, 2]], 128), { srgb: false }),
     poly: canvasTex(128, 128, noiseCanvas('#1d1e20', [['rgba(255,255,255,0.06)', 2500, 1, 2], ['rgba(0,0,0,0.3)', 1200, 1, 2]], 128)),
     camo: canvasTex(128, 128, (g) => {
@@ -3091,6 +3094,11 @@ function buildViewmodels() {
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.053, 0.053, 0.03, 14), glove);
     cuff.position.copy(W.clone().lerp(E, 0.08)); cuff.lookAt(E); cuff.rotateX(Math.PI / 2); p.add(cuff);
   };
+  const engrave = (p, txt, w, h, x, y, z) => {
+    const t = canvasTex(512, Math.round(512 * h / w), (g, W, H) => { g.clearRect(0, 0, W, H); g.font = `700 ${H * 0.62}px ${FONT_KR}`; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(225,230,238,0.82)'; g.fillText(txt, 6, H / 2 + 2); }, { aniso: true });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    m.position.set(x, y, z); m.rotation.y = -Math.PI / 2; p.add(m); return m;
+  };
   const flashTex = canvasTex(128, 128, (g) => {
     g.translate(64, 64);
     for (let i = 0; i < 7; i++) { g.rotate(Math.PI * 2 / 7); const gr = g.createLinearGradient(0, 0, 0, -60); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(1, 'rgba(255,160,60,0)');
@@ -3132,6 +3140,7 @@ function buildViewmodels() {
     hand(g, [-0.026, -0.07, 0.03], 1, 0.045, 0.016, false);
     arm(g, [0.01, -0.09, 0.1], [0.11, -0.27, 0.44]);
     arm(g, [-0.03, -0.1, 0.07], [-0.17, -0.28, 0.38]);
+    engrave(g, 'K5  ·  9mm PARA', 0.1, 0.014, -0.0158, 0.032, -0.07);
     const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.03, -0.17); g.add(muzzle);
     VMS.push({ g, mag, muzzle, flash: mkFlash(g, 0, 0.03, -0.2), hip: new THREE.Vector3(0.14, -0.14, -0.36), ads: new THREE.Vector3(0, -0.053, -0.34), flashSize: 0.16 });
   }
@@ -3188,6 +3197,7 @@ function buildViewmodels() {
     hand(g, [-0.006, -0.042, -0.34], 1, 0.06, 0.02);
     arm(g, [0.01, -0.12, 0.16], [0.13, -0.29, 0.47]);
     arm(g, [-0.03, -0.08, -0.3], [-0.2, -0.28, 0.0]);
+    engrave(g, 'K2  ·  5.56×45mm  ·  SEOUL ARMS', 0.2, 0.016, -0.0296, 0.03, -0.1);
     const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.004, -0.86); g.add(muzzle);
     VMS.push({ g, mag, muzzle, flash: mkFlash(g, 0, 0.004, -0.88), hip: new THREE.Vector3(0.16, -0.17, -0.42), ads: new THREE.Vector3(0, -0.083, -0.33), flashSize: 0.3 });
   }
@@ -3220,9 +3230,13 @@ function buildViewmodels() {
     hand(lh, [-0.004, -0.045, -0.3], 1, 0.065, 0.02);
     arm(lh, [-0.03, -0.08, -0.26], [-0.2, -0.28, 0.02]);
     arm(g, [0.01, -0.1, 0.17], [0.12, -0.28, 0.47]);
+    engrave(g, 'KS-12  ·  12 GAUGE', 0.14, 0.016, -0.0266, 0.012, -0.04);
     const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.022, -0.7); g.add(muzzle);
     VMS.push({ g, mag, pump, muzzle, flash: mkFlash(g, 0, 0.022, -0.75), hip: new THREE.Vector3(0.15, -0.16, -0.4), ads: new THREE.Vector3(0, -0.045, -0.35), flashSize: 0.42 });
   }
+  const wRim = new THREE.DirectionalLight(0xa8c8ff, 1.5); wRim.position.set(-1.2, 1.4, 1.0); weaponScene.add(wRim);
+  const wFill = new THREE.DirectionalLight(0xffe2c0, 0.9); wFill.position.set(1.0, 0.4, 1.2); weaponScene.add(wFill);
+  for (const v of VMS) v.g.traverse(o => { if (o.isMesh && o.material && o.material.isMeshStandardMaterial) o.material.envMapIntensity = 2.0; });
   for (const v of VMS) { v.g.visible = false; v.g.traverse(o => { o.frustumCulled = false; }); weaponScene.add(v.g); }
 }
 
