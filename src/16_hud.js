@@ -51,6 +51,7 @@ function drawMinimap() {
     g.fillStyle = e.type === 'boss' ? '#d66bff' : e.type === 'drone' ? '#ff6bd0' : '#ff4545';
     g.beginPath(); g.arc(x, z, e.type === 'boss' ? 7 : e.type === 'brute' ? 3.4 : 2.4, 0, 6.29); g.fill();
   }
+  for (const r of remoteList()) { const [x, z] = toM(r.pos.x, r.pos.z); g.fillStyle = SLOT_COLORS[r.slot % 4]; g.beginPath(); g.arc(x, z, 3.4, 0, 6.29); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1; g.stroke(); }
   g.restore();
   // 플레이어 화살표 + 북쪽 표시
   g.fillStyle = '#fff'; g.beginPath(); g.moveTo(R0, R0 - 8); g.lineTo(R0 + 5.5, R0 + 6); g.lineTo(R0, R0 + 3); g.lineTo(R0 - 5.5, R0 + 6); g.closePath(); g.fill();

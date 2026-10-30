@@ -208,7 +208,7 @@ function fire(w, st, vm, hs) {
       const fall = w.pellets > 1 && res.t > w.falloff ? Math.max(0.35, 1 - (res.t - w.falloff) / w.falloff) : 1;
       let dmg = w.dmg * (res.part === 'head' ? w.head : res.mult) * fall * (1 + 0.15 * P.sk.dmg);
       const crit = P.sk.crit > 0 && Math.random() < 0.1 * P.sk.crit; if (crit) dmg *= 2;
-      const k = damageEnemy(res.enemy, dmg, res.part, _d, res.point);
+      const k = dmgEnemy(res.enemy, dmg, res.part, _d, res.point);
       anyHit++; if (res.part === 'head' || crit) anyHead = true; if (k) anyKill = true;
     } else impactFX(res);
   }
@@ -220,6 +220,7 @@ function fire(w, st, vm, hs) {
   vm.flash.visible = true; vm.flashT = 0.045; vm.flash.material.rotation = Math.random() * 6.28; vm.flash.scale.setScalar(vm.flashSize * R(0.8, 1.2) * (1 - P.ads * 0.45));
   FXA.spawn(_mz.x, _mz.y, _mz.z, 0, 0, 0, 2.2, 1.5, 0.7, w.shell ? 0.14 : 0.08, 0.04, 0, 0);
   AUDIO.shot(w.id);
+  netShotFx(_mz, SHOT.point, w.id);
   if (!w.shell) {
     _right.multiplyScalar(R(1.5, 2.5)); _up.multiplyScalar(R(1, 2));
     FXA.spawn(_mz.x, _mz.y, _mz.z, _right.x + _up.x, _right.y + _up.y, _right.z + _up.z, 1.6, 1.1, 0.4, 0.03, 0.5, 9.8, 0.5);
@@ -280,18 +281,22 @@ function updateGrenades(dt) {
     if (g.fuse <= 0) { explode(g.pos, 9 * (1 + 0.2 * P.sk.gren), 170 * (1 + 0.25 * P.sk.gren), true); scene.remove(g.m); GRENADES.splice(i, 1); }
   }
 }
-function explode(p, radius, dmg, byPlayer) {
+function explodeFX(p, radius) {
   FX.explosion(p, radius > 10 ? 1.6 : 1);
   AUDIO.boom(p.x, p.y, p.z, radius > 10 ? 1.5 : 1);
   spawnDecal(new THREE.Vector3(p.x, groundH(p.x, p.z) + 0.03, p.z), new THREE.Vector3(0, 1, 0), radius * 0.35);
+  P.shake = Math.max(P.shake, clamp(1.4 - p.distanceTo(camera.position) / 30, 0, 1.2));
+}
+function explode(p, radius, dmg, byPlayer) {
+  explodeFX(p, radius);
+  if (byPlayer) netExplosionFx(p, radius);
   const dpl = p.distanceTo(camera.position);
-  P.shake = Math.max(P.shake, clamp(1.4 - dpl / 30, 0, 1.2));
   for (const e of ENEMIES) {
-    if (e.state === 'dead') continue;
+    if (e.state === 'dead' || (isClient() && !byPlayer)) continue;
     const d = Math.hypot(e.pos.x - p.x, e.pos.y + e.h * 0.5 - p.y, e.pos.z - p.z);
     if (d < radius + e.r) {
       _d.set(e.pos.x - p.x, 0.4, e.pos.z - p.z).normalize();
-      if (damageEnemy(e, dmg * (1 - d / (radius + e.r)) + 10, 'body', _d, e.pos)) {}
+      if (dmgEnemy(e, dmg * (1 - d / (radius + e.r)) + 10, 'body', _d, e.pos)) {}
       if (byPlayer) hitMarker('');
     }
   }
@@ -299,7 +304,7 @@ function explode(p, radius, dmg, byPlayer) {
 }
 
 function damagePlayer(amount, from) {
-  if (!P.alive || G.state !== 'play') return;
+  if (!P.alive || !(G.state === 'play' || (NET.on && (G.state === 'paused' || G.state === 'skill')))) return;
   if (P.god) amount = 0;
   P.hp -= amount; P.lastHurt = G.time;
   P.shake = Math.max(P.shake, clamp(amount / 30, 0.3, 1));

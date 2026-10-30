@@ -7,9 +7,10 @@ let flowTimer = 0;
 
 function spawnPoint(minD, maxD, fly) {
   camera.getWorldDirection(_e1);
+  const sc = spawnCenter();
   for (let i = 0; i < 60; i++) {
     const a = Math.random() * Math.PI * 2, d = R(minD, maxD);
-    const x = P.pos.x + Math.cos(a) * d, z = P.pos.z + Math.sin(a) * d;
+    const x = sc.x + Math.cos(a) * d, z = sc.z + Math.sin(a) * d;
     if (x < PLAY.x0 + 5 || x > PLAY.x1 - 5 || z < PLAY.z0 + 5 || z > PLAY.z1 - 5) continue;
     if (walkBlocked[cellOf(x, z)]) continue;
     if (!fly) { const fd = flowDistAt(x, z); if (fd < 0 || fd > 120) continue; }
@@ -28,7 +29,7 @@ function spawnEnemy(type, at) {
   scene.add(model.g);
   const hpK = type === 'boss' ? 1 + (G.wave / 5 - 1) * 0.6 : 1 + 0.1 * tierOf();   // 웨이브가 올라가도 체력 고정 (몸 3방 규칙)
   const e = {
-    type, T, model, mats, pos: new THREE.Vector3(p.x, groundH(p.x, p.z), p.z), vel: new THREE.Vector3(), yaw: Math.atan2(P.pos.x - p.x, P.pos.z - p.z),
+    id: NET.eid++, type, T, model, mats, pos: new THREE.Vector3(p.x, groundH(p.x, p.z), p.z), vel: new THREE.Vector3(), yaw: Math.atan2(P.pos.x - p.x, P.pos.z - p.z),
     hp: T.hp * hpK, maxHp: T.hp * hpK, r: T.r, h: T.h, state: 'spawn', t: 0, phase: Math.random() * 6, atk: 0, atkCd: R(0.5, 1.5),
     shootCd: R(1.5, 3), los: false, losT: Math.random() * 0.4, flash: 0, stuckT: 0, lastD: 1e9, checkT: 4, strafe: Math.random() < 0.5 ? 1 : -1,
     scaleK: 1, deadT: 0, leap: 0, hover: R(4.5, 6.5), name: T.name,
@@ -41,6 +42,7 @@ function spawnEnemy(type, at) {
   model.g.traverse(o => { if (o.userData.gun) o.visible = e.armed; });
   model.g.position.copy(e.pos); model.g.rotation.y = e.yaw;
   ENEMIES.push(e);
+  netOnEnemySpawn(e);
   return e;
 }
 // 전송 빔 (적이 나타날 때)
@@ -116,6 +118,7 @@ function killEnemy(e, part, dir) {
   G.lastKillT = G.time;
   G.score += pts;
   HUD.kill(e.name, pts, head, G.multi);
+  netOnKill(e, part, dir, pts, head);
   AUDIO.alien(e.pos.x, e.pos.y + 1, e.pos.z, 'die');
   AUDIO.kill();
   FX.blood(_e1.set(e.pos.x, e.pos.y + e.h * 0.6, e.pos.z), dir || _e2.set(0, 0, 0), 25);
@@ -129,14 +132,16 @@ function killEnemy(e, part, dir) {
 
 function updateEnemies(dt) {
   flowTimer -= dt;
-  if (flowTimer <= 0 && !ffBuild) { flowTimer = 0.35; startFlow(P.pos.x, P.pos.z); }
+  if (flowTimer <= 0 && !ffBuild) { flowTimer = 0.35; startFlow(P.pos.x, P.pos.z, flowExtras()); }
   stepFlow(9000);
   OBSTACLES.length = 0;
   OBSTACLES.push({ x: P.pos.x, z: P.pos.z, r: 0.4, player: true });
+  for (const r of remoteList()) OBSTACLES.push({ x: r.pos.x, z: r.pos.z, r: 0.4 });
   for (let i = ENEMIES.length - 1; i >= 0; i--) {
     const e = ENEMIES[i];
     e.t += dt; e.flash -= dt;
     if (e.state === 'dead') { if (updateDead(e, dt)) { scene.remove(e.model.g); disposeEnemy(e); ENEMIES.splice(i, 1); } continue; }
+    TG = pickTarget(e);
     if (e.type === 'boss') updateBoss(e, dt);
     else if (e.type === 'drone') updateDrone(e, dt);
     else updateWalker(e, dt);
@@ -162,9 +167,9 @@ function disposeEnemy(e) {
 }
 
 function steer(e, dt, toward = true) {
-  const dx = P.pos.x - e.pos.x, dz = P.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1;
+  const dx = TG.pos.x - e.pos.x, dz = TG.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1;
   e.losT -= dt;
-  if (e.losT <= 0) { e.losT = 0.35; e.los = d < 70 && gridLOS(e.pos.x, e.pos.z, P.pos.x, P.pos.z); }
+  if (e.losT <= 0) { e.losT = 0.35; e.los = d < 70 && gridLOS(e.pos.x, e.pos.z, TG.pos.x, TG.pos.z); }
   let vx, vz;
   if (!toward) { vx = -dx / d; vz = -dz / d; }
   else if (e.los || d < 4) { vx = dx / d; vz = dz / d; }
@@ -217,7 +222,7 @@ function updateWalker(e, dt) {
     _pp.x = e.pos.x + e.vel.x * dt; _pp.z = e.pos.z + e.vel.z * dt; resolveCircle(_pp, e.r, e.pos.y + 0.3, e.pos.y + 1);
     if (!isWater(_pp.x, _pp.z)) { e.pos.x = _pp.x; e.pos.z = _pp.z; }
     e.pos.y = Math.max(groundH(e.pos.x, e.pos.z), e.pos.y + e.vy * dt);
-    if (!e.hitDone && Math.hypot(P.pos.x - e.pos.x, P.pos.z - e.pos.z) < 1.4 && Math.abs(P.pos.y - e.pos.y) < 1.5) { e.hitDone = true; damagePlayer(10, e.pos); }
+    if (!e.hitDone && Math.hypot(TG.pos.x - e.pos.x, TG.pos.z - e.pos.z) < 1.4 && Math.abs(TG.pos.y - e.pos.y) < 1.5) { e.hitDone = true; hurtTarget(10, e.pos); }
     faceTo(e, Math.atan2(e.vel.x, e.vel.z), dt, 12);
   } else if (e.state === 'shoot') {
     // 멈춰 서서 조준 → 짧게 연사. 에임은 일부러 부정확하다.
@@ -229,7 +234,7 @@ function updateWalker(e, dt) {
       const err = (1.1 + st.d * 0.07) * Math.max(0.5, 1 - 0.1 * e.tier), lead = st.d / 55 * 0.35;
       e.model.muzzle.getWorldPosition(_e2);
       const from = _e2.clone();
-      fireBolt(from, _e1.set(P.pos.x + P.vel.x * lead + R(-err, err), P.pos.y + 1.1 + R(-err * 0.6, err * 0.6), P.pos.z + P.vel.z * lead + R(-err, err)), 55, 20, 0.16, new THREE.Color(0.5, 4, 1.4));
+      fireBolt(from, _e1.set(TG.pos.x + TG.vel.x * lead + R(-err, err), TG.pos.y + 1.1 + R(-err * 0.6, err * 0.6), TG.pos.z + TG.vel.z * lead + R(-err, err)), 55, 20, 0.16, new THREE.Color(0.5, 4, 1.4));
       FXA.spawn(from.x, from.y, from.z, 0, 0, 0, 1.6, 4, 1.2, 0.35, 0.07, 0, 1);
       FXA.spawn(from.x, from.y, from.z, 0, 0, 0, 0.6, 2.5, 0.8, 0.8, 0.09, 0, 1);
       e.burst--; e.bt = 0.34;
@@ -243,10 +248,10 @@ function updateWalker(e, dt) {
     if (!e.hitDone && e.atk > hitT) {
       e.hitDone = true;
       const reach = isBrute ? 4.2 : isRunner ? 1.8 : 2.5;
-      if (isBrute) { FX.dust(_e1.set(e.pos.x + Math.sin(e.yaw) * 2, e.pos.y + 0.2, e.pos.z + Math.cos(e.yaw) * 2), 20, null, [0.5, 0.46, 0.4]); AUDIO.boom(e.pos.x, e.pos.y, e.pos.z, 0.4); P.shake = Math.max(P.shake, clamp(1 - st.d / 15, 0, 0.8)); }
+      if (isBrute) { FX.dust(_e1.set(e.pos.x + Math.sin(e.yaw) * 2, e.pos.y + 0.2, e.pos.z + Math.cos(e.yaw) * 2), 20, null, [0.5, 0.46, 0.4]); AUDIO.boom(e.pos.x, e.pos.y, e.pos.z, 0.4); if (!TG.remote) P.shake = Math.max(P.shake, clamp(1 - st.d / 15, 0, 0.8)); }
       if (st.d < reach) {
-        damagePlayer(isBrute ? 30 : isRunner ? 7 : 14, e.pos);
-        if (isBrute) { P.vel.x += st.dx / st.d * 9; P.vel.z += st.dz / st.d * 9; P.vel.y = 4; P.onGround = false; }
+        hurtTarget(isBrute ? 30 : isRunner ? 7 : 14, e.pos);
+        if (isBrute) knockTarget(st.dx / st.d * 9, st.dz / st.d * 9);
       }
     }
     if (e.atk > endT) { e.state = 'chase'; e.atkCd = isBrute ? 1.2 : isRunner ? 0.5 : 0.7; }
@@ -302,7 +307,7 @@ function animateWalker(e, dt) {
 function updateDrone(e, dt) {
   const m = e.model;
   if (e.state === 'spawn') { m.g.scale.setScalar(smooth(clamp(e.t / 0.7, 0, 1))); if (e.t > 0.7) e.state = 'chase'; }
-  const dx = P.pos.x - e.pos.x, dz = P.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1;
+  const dx = TG.pos.x - e.pos.x, dz = TG.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1;
   let st;
   if (d > 24) st = steer(e, dt);
   else if (d < 13) st = steer(e, dt, false);
@@ -320,12 +325,12 @@ function updateDrone(e, dt) {
   m.eye.material.color.setRGB(5 + charge * 8, 0.5 + charge * 3, 2 + charge * 3);
   if (e.shootCd <= 0 && e.state === 'chase') {
     e.shootCd = R(2.6, 4.0) * Math.max(0.55, 1 - 0.1 * e.tier);
-    _e1.copy(e.pos); _e2.set(P.pos.x, P.pos.y + 1.3, P.pos.z);
+    _e1.copy(e.pos); _e2.set(TG.pos.x, TG.pos.y + 1.3, TG.pos.z);
     const dist = _e1.distanceTo(_e2);
     if (dist < 70) {
       _e2.sub(_e1).normalize();
       const r = raycastWorld(_e1, _e2, dist);
-      if (r.t >= dist - 0.5) fireBolt(e.pos, _e2.set(P.pos.x + P.vel.x * dist / 30 + R(-1, 1), P.pos.y + 1.2 + R(-0.5, 0.5), P.pos.z + P.vel.z * dist / 30 + R(-1, 1)), 36, 20, 0.35, new THREE.Color(4, 0.6, 2.6));
+      if (r.t >= dist - 0.5) fireBolt(e.pos, _e2.set(TG.pos.x + TG.vel.x * dist / 30 + R(-1, 1), TG.pos.y + 1.2 + R(-0.5, 0.5), TG.pos.z + TG.vel.z * dist / 30 + R(-1, 1)), 36, 20, 0.35, new THREE.Color(4, 0.6, 2.6));
     }
   }
 }
@@ -333,7 +338,8 @@ function fireBolt(from, target, speed, dmg, size, col, grav = 0) {
   const dir = _e1.copy(target).sub(from).normalize();
   const s = takeSprite(col, size * 2.5);
   s.position.copy(from);
-  BOLTS.push({ pos: from.clone(), vel: dir.clone().multiplyScalar(speed), dmg, r: size, s, life: 5, col, grav });
+  const bolt = { pos: from.clone(), vel: dir.clone().multiplyScalar(speed), dmg, r: size, s, life: 5, col, grav };
+  BOLTS.push(bolt); netOnBolt(bolt);
   AUDIO.zap(from.x, from.y, from.z);
 }
 function updateBolts(dt) {
@@ -378,7 +384,7 @@ function updateDead(e, dt) {
 }
 
 let PICK_RES = null;
-function dropPickup(x, z, kind) {
+function dropPickup(x, z, kind, id) {
   if (!PICK_RES) {
     const tex = canvasTex(64, 64, (c) => { c.fillStyle = '#f4f4f2'; c.fillRect(0, 0, 64, 64); c.fillStyle = '#d62828'; c.fillRect(24, 10, 16, 44); c.fillRect(10, 24, 44, 16); }, { aniso: false });
     PICK_RES = {
@@ -395,7 +401,9 @@ function dropPickup(x, z, kind) {
   glow.scale.setScalar(1.6); g.add(glow);
   const y = groundH(x, z);
   g.position.set(x, y + 0.6, z); scene.add(g);
-  PICKUPS.push({ g, kind, x, z, y, t: 0 });
+  if (id === undefined) id = NET.pid++;
+  PICKUPS.push({ g, kind, x, z, y, t: 0, id });
+  if (isHost()) netBcast({ t: 'pk', id, kind, x, z });
 }
 function updatePickups(dt) {
   for (let i = PICKUPS.length - 1; i >= 0; i--) {
@@ -405,11 +413,12 @@ function updatePickups(dt) {
     p.g.visible = p.t < 25 || Math.floor(p.t * 6) % 2 === 0;
     const d = Math.hypot(P.pos.x - p.x, P.pos.z - p.z);
     let take = false;
-    if (d < 1.7 && P.alive) {
+    if (isClient() && d < 1.7 && P.alive && ((p.kind === 'health' && P.hp < P.maxHp) || (p.kind === 'gren' && P.grenades < 5))) { netToHost({ t: 'take', id: p.id }); scene.remove(p.g); PICKUPS.splice(i, 1); continue; }
+    if (!isClient() && d < 1.7 && P.alive) {
       if (p.kind === 'health' && P.hp < P.maxHp) { P.hp = Math.min(P.maxHp, P.hp + 40); HUD.toast('+40 체력', '#7dff9a'); take = true; }
       if (p.kind === 'gren' && P.grenades < 5) { P.grenades = Math.min(5, P.grenades + 2); HUD.toast('수류탄 +2', '#ffd27a'); take = true; }
     }
     if (take) AUDIO.pickup();
-    if (take || p.t > 30) { scene.remove(p.g); PICKUPS.splice(i, 1); }
+    if (take || p.t > 30) { if (take && isHost()) netBcast({ t: 'pkx', id: p.id }); scene.remove(p.g); PICKUPS.splice(i, 1); }
   }
 }

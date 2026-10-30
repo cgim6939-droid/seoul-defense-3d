@@ -64,6 +64,11 @@ function drawBigMap() {
       g.font = `900 13px ${FONT_KR}`; g.fillText('모선', x, y - 16);
     } else { g.fillStyle = e.type === 'drone' ? '#ff6bd0' : '#ff4545'; g.beginPath(); g.arc(x, y, e.type === 'brute' ? 5 : 3.5, 0, 6.29); g.fill(); }
   }
+  for (const r of remoteList()) {
+    const x = sx(r.pos.x), y = sz(r.pos.z), col = SLOT_COLORS[r.slot % 4];
+    g.fillStyle = col; g.beginPath(); g.arc(x, y, 6, 0, 6.29); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+    g.font = `900 12px ${FONT_KR}`; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.8)'; g.strokeText(r.name, x, y - 14); g.fillStyle = col; g.fillText(r.name, x, y - 14);
+  }
   const px = sx(P.pos.x), py = sz(P.pos.z);
   const pulse = 10 + (G.time * 12) % 14;
   g.strokeStyle = `rgba(255,255,255,${0.6 - (pulse - 10) / 28})`; g.lineWidth = 2; g.beginPath(); g.arc(px, py, pulse, 0, 6.29); g.stroke();

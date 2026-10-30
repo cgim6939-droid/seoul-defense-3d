@@ -12,7 +12,7 @@ function bindUI() {
   $('btnStart').onclick = () => show('modeSel', true);
   $('cardSurvival').onclick = () => startGame();
   $('cardMulti').onclick = () => { mpSync(); show('mpSet', true); };
-  const mpSegs = [['segMpMode', 'mpMode', 'create'], ['segMpMax', 'mpMax', '2'], ['segMpFF', 'mpFF', 'off']];
+  const mpSegs = [['segMpMode', 'mpMode', 'create'], ['segMpMax', 'mpMax', '2']];
   const mpSync = () => {
     $('mpName').value = SETTINGS.mpName || '';
     for (const [id, key, def] of mpSegs) for (const b of $(id).querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === (SETTINGS[key] || def));
@@ -22,11 +22,19 @@ function bindUI() {
   };
   for (const [id, key] of mpSegs) $(id).onclick = (e) => { const v = e.target.dataset && e.target.dataset.v; if (!v) return; SETTINGS[key] = v; saveSettings(); mpSync(); };
   $('mpName').oninput = (e) => { SETTINGS.mpName = e.target.value; saveSettings(); };
-  $('btnMpGo').onclick = () => {
-    if (!(SETTINGS.mpName || '').trim()) { $('mpMsg').textContent = '닉네임을 먼저 입력해 주세요.'; $('mpName').focus(); return; }
-    if ((SETTINGS.mpMode || 'create') === 'join' && $('mpCode').value.trim().length < 6) { $('mpMsg').textContent = '6자리 방 코드를 입력해 주세요.'; $('mpCode').focus(); return; }
-    $('mpMsg').textContent = '온라인 서버를 준비 중이에요. 설정은 저장됐어요!';
+  $('btnMpGo').onclick = async () => {
+    const name = (SETTINGS.mpName || '').trim(), join = (SETTINGS.mpMode || 'create') === 'join';
+    if (!name) { $('mpMsg').textContent = '닉네임을 먼저 입력해 주세요.'; $('mpName').focus(); return; }
+    const code = $('mpCode').value.trim();
+    if (join && code.length < 6) { $('mpMsg').textContent = '6자리 방 코드를 입력해 주세요.'; $('mpCode').focus(); return; }
+    $('btnMpGo').disabled = true; $('mpMsg').textContent = join ? '방에 접속하는 중…' : '방을 만드는 중…';
+    try { if (join) await netJoin(code, name); else await netHost(name, +(SETTINGS.mpMax || 2)); $('mpMsg').textContent = ''; }
+    catch (e) { netCleanup(); $('mpMsg').textContent = (e && e.message) || '연결에 실패했어요.'; }
+    $('btnMpGo').disabled = false;
   };
+  $('btnLobbyStart').onclick = () => hostStartMatch();
+  $('btnLobbyLeave').onclick = () => { netLeave(); show('mpSet', true); };
+  $('btnCopyCode').onclick = () => { try { navigator.clipboard.writeText(NET.code); $('btnCopyCode').textContent = '복사됨!'; setTimeout(() => $('btnCopyCode').textContent = '복사', 1200); } catch (e) {} };
   $('btnMpBack').onclick = () => show('mpSet', false);
   $('btnModeBack').onclick = () => show('modeSel', false);
   $('btnRetry').onclick = () => startGame();
@@ -72,7 +80,8 @@ async function startGame() {
   Object.assign(G, { wave: 0, score: 0, kills: 0, headshots: 0, shots: 0, hits: 0, waveState: 'break', waveTimer: 7, toSpawn: 0, multi: 0, lastKillT: -9 });
   resetSkills();
   Object.assign(P, { hp: 100, maxHp: 100, alive: true, yaw: 0, pitch: 0.02, weapon: 1, switchT: 0, switchTo: -1, grenades: 3, lastHurt: -99, kick: 0, ads: 0, land: 0, shake: 0 });
-  P.pos.set(800, 0, 340); P.vel.set(0, 0, 0); P.eyeY = 1.65;
+  P.pos.set(800 + (NET.on ? ([0, -3, 3, -6][NET.slot] || 0) : 0), 0, 340); P.vel.set(0, 0, 0); P.eyeY = 1.65;
+  document.body.classList.remove('spectating'); NET.ps = NET.sn = NET.st = 0;
   WST.forEach((s, i) => { s.ammo = WEAPONS[i].mag; s.reload = 0; s.cool = 0; s.pumpT = 0; });
   showWeapon(1);
   lastLoc = locationOf(800, 340).n; locCand = lastLoc;
@@ -106,7 +115,12 @@ function onPlayerDeath() {
   engine(false);
   if (DRIVE.car) { DRIVE.parked.push(DRIVE.car); DRIVE.car = null; }
   mouseDown = rmb = false; closeMap();
-  setTimeout(() => {
+  if (NET.on) { netLocalDeath(); return; }
+  setTimeout(showGameOver, 2600);
+}
+function showGameOver() {
+  show('skillPick', false); show('pause', false); show('bigmap', false); closeMap();
+  $('btnRetry').classList.toggle('hidden', NET.on);
     G.state = 'over';
     if (document.pointerLockElement) document.exitPointerLock();
     const best = G.score > BEST; if (best) { BEST = G.score; try { localStorage.setItem('sd3d.best', BEST); } catch (e) {} }
@@ -116,9 +130,9 @@ function onPlayerDeath() {
     $('stAcc').textContent = `${G.shots ? Math.round(G.hits / G.shots * 100) : 0}% · ${G.headshots}`;
     show('over', true); show('hud', false);
     AUDIO.bossHum(false);
-  }, 2600);
 }
 function toTitle() {
+  if (NET.on) netLeave();
   fadeTo(1);
   setTimeout(() => {
     clearWorld(); G.state = 'title';
@@ -143,7 +157,8 @@ function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
   fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { $('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps`; fpsAcc = 0; fpsN = 0; }
-  if (G.state === 'paused' || G.state === 'loading' || G.state === 'skill') { if (G.state !== 'loading') renderFrame(); return; }
+  const mpLive = NET.on && (G.state === 'paused' || G.state === 'skill');
+  if (!mpLive && (G.state === 'paused' || G.state === 'loading' || G.state === 'skill')) { if (G.state !== 'loading') renderFrame(); return; }
   G.time += dt; U.time.value = G.time;
   updateSignals(G.time); animateFlags(G.time);
   updateBoats(dt);
@@ -154,13 +169,16 @@ function loop(now) {
   WORLD_FX.towerRing.color.setHSL((G.time * 0.03) % 1, 0.8, 0.5).multiplyScalar(4 * Math.max(0.3, U.lights.value));
   const T0 = performance.now();
   let T1 = T0, T2 = T0;
-  if (G.state === 'play' || G.state === 'over') {
-    if (G.state === 'play') { updatePlayer(dt); updateWaves(dt); updateSkills(dt); }
-    else updateDeath(dt);
+  if (G.state === 'play' || G.state === 'over' || mpLive) {
+    if (G.state === 'play') { updatePlayer(dt); if (!isClient()) updateWaves(dt); updateSkills(dt); }
+    else if (G.state === 'over') updateDeath(dt);
+    else if (!isClient()) updateWaves(dt);
+    netTick(dt); updateRemotes(dt); updateTeam(dt);
     T1 = performance.now();
-    updateEnemies(dt); updateBolts(dt); updateGrenades(dt); updatePickups(dt); updateBeams(dt);
+    if (isClient()) updateNetEnemies(dt); else updateEnemies(dt);
+    updateBolts(dt); updateGrenades(dt); updatePickups(dt); updateBeams(dt);
     T2 = performance.now();
-    if (G.state === 'play') updateHUD(dt);
+    if (G.state === 'play' || mpLive) updateHUD(dt);
     updateShadowCam(P.pos.x, P.pos.z);
   } else {
     titleCamera(G.time);
@@ -248,6 +266,10 @@ window.__SD = {
   key: (code, on) => { keys[code] = on; },
   toCar: () => { let b = null, bd = 1e9; for (const ln of LANES) for (const c of ln.cars) { const d = Math.hypot(c.x - 880, c.z - 330); if (d < bd) { bd = d; b = c; } } P.pos.set(b.x + 2, 0, b.z); return [b.x, b.z]; },
   drive: () => !!DRIVE.car,
+  mpHost: (n, m, c) => netHost(n || 'Host', m || 2, c).then(() => NET.code),
+  mpJoin: (c, n) => netJoin(c, n || 'Guest').then(() => 'joined'),
+  mpStart: () => { hostStartMatch(); return 'start'; },
+  net: () => JSON.stringify({ on: NET.on, role: NET.role, code: NET.code, players: NET.players.map(p => p.name), remotes: [...NET.remotes.values()].map(r => r.name + ':' + r.pos.x.toFixed(0) + ',' + r.pos.z.toFixed(0)), started: NET.started, state: G.state, enemies: ENEMIES.length, wave: G.wave, ws: G.waveState }),
   pick: (i) => chooseSkill(SKST.cards[i]),
   sk: () => JSON.stringify(P.sk) + ' tier=' + tierOf() + ' state=' + G.state,
   setWave: (n) => { G.wave = n; },

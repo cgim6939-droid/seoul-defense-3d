@@ -73,7 +73,7 @@ function nearEnemies(r) {
 }
 function skillHit(e, dmg) {
   _sp.set(e.pos.x, e.pos.y + e.h * 0.5, e.pos.z); _sd.set(e.pos.x - P.pos.x, 0.2, e.pos.z - P.pos.z).normalize();
-  return damageEnemy(e, dmg, 'body', _sd, _sp);
+  return dmgEnemy(e, dmg, 'body', _sd, _sp);
 }
 function updateSkills(dt) {
   if (!P.alive) return;

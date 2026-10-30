@@ -207,7 +207,7 @@ function buildWalkGrid() {
   }
 }
 const cellOf = (x, z) => clamp(Math.floor(z / NG), 0, NGZ - 1) * NGX + clamp(Math.floor(x / NG), 0, NGX - 1);
-function startFlow(px, pz) {
+function startFlow(px, pz, extras) {
   const buf = FF[1 - ffCur]; buf.gen++;
   let start = cellOf(px, pz);
   if (walkBlocked[start]) {
@@ -216,7 +216,14 @@ function startFlow(px, pz) {
     }
   }
   ffQueue[0] = start; buf.stamp[start] = buf.gen; buf.dist[start] = 0;
-  ffBuild = { buf, head: 0, tail: 1 };
+  let tail = 1;
+  if (extras) for (const q of extras) {
+    let c = cellOf(q.x, q.z);
+    if (walkBlocked[c]) { let ok = false; search2: for (let r = 1; r < 6; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) { const cc = cellOf(q.x + dx * NG, q.z + dz * NG); if (!walkBlocked[cc]) { c = cc; ok = true; break search2; } } if (!ok) continue; }
+    if (buf.stamp[c] === buf.gen) continue;
+    ffQueue[tail++] = c; buf.stamp[c] = buf.gen; buf.dist[c] = 0;
+  }
+  ffBuild = { buf, head: 0, tail };
 }
 function stepFlow(budget) {
   if (!ffBuild) return;

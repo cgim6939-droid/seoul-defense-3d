@@ -9,7 +9,7 @@ function updateBoss(e, dt) {
   for (const c of m.cores) c.scale.setScalar(1 + Math.sin(e.t * 5) * 0.12);
   m.hull.material.emissive.setRGB(e.flash > 0 ? 0.5 : 0, e.flash > 0 ? 0.3 : 0, e.flash > 0 ? 0.6 : 0);
   const orbit = e.t * 0.08;
-  const tx = P.pos.x + Math.cos(orbit) * 40, tz = P.pos.z + Math.sin(orbit) * 40;
+  const tx = TG.pos.x + Math.cos(orbit) * 40, tz = TG.pos.z + Math.sin(orbit) * 40;
   if (e.state === 'arrive') {
     e.pos.x = damp(e.pos.x, tx, 0.5, dt); e.pos.z = damp(e.pos.z, tz, 0.5, dt);
     e.pos.y = damp(e.pos.y, 55, 0.55, dt);
@@ -27,12 +27,12 @@ function updateBoss(e, dt) {
           setTimeout(() => {
             if (e.state === 'dead' || G.state !== 'play') return;
             const c = m.cores[i % 4]; c.getWorldPosition(_e1);
-            fireBolt(_e1.clone(), _e2.set(P.pos.x + R(-9, 9), P.pos.y, P.pos.z + R(-9, 9)), 24, 0, 1.3, new THREE.Color(4, 1.2, 0.4), 4);
+            fireBolt(_e1.clone(), _e2.set(TG.pos.x + R(-9, 9), TG.pos.y, TG.pos.z + R(-9, 9)), 24, 0, 1.3, new THREE.Color(4, 1.2, 0.4), 4);
           }, i * 140);
         }
         e.attackT = 5;
       } else if (mode === 1) {   // 추적 빔
-        for (let i = 0; i < 4; i++) setTimeout(() => { if (e.state !== 'dead' && G.state === 'play') bossBeam(P.pos.x + P.vel.x * 0.8, P.pos.z + P.vel.z * 0.8, e); }, i * 900);
+        for (let i = 0; i < 4; i++) setTimeout(() => { if (e.state !== 'dead' && G.state === 'play') bossBeam(TG.pos.x + TG.vel.x * 0.8, TG.pos.z + TG.vel.z * 0.8, e); }, i * 900);
         e.attackT = 6;
       } else {   // 소환
         for (let i = 0; i < 5; i++) { const p = spawnPoint(20, 45, i < 2); if (p) spawnEnemy(i < 2 ? 'drone' : 'grunt', p); }
@@ -45,6 +45,7 @@ function updateBoss(e, dt) {
   updateBossFX(dt);
 }
 function bossBeam(x, z, e) {
+  if (isHost()) netBcast({ t: 'bb', x, z });
   const y = groundH(x, z);
   const ring = new THREE.Mesh(new THREE.RingGeometry(3.4, 4, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 0.3, 0.6), transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
   ring.position.set(x, y + 0.15, z); scene.add(ring);
@@ -115,6 +116,7 @@ function waveClear() {
   HUD.banner('웨이브 클리어', `보너스 +${bonus}점 · 수류탄 +1 · 12초 후 다음 웨이브`);
   AUDIO.chime();
   $('bossbar').classList.add('hidden');
+  netOnWaveClear();
   openSkillPick(false);
 }
 function updateWaves(dt) {

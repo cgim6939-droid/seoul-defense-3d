@@ -73,7 +73,7 @@ function updateDrive(dt) {
   // 적 치기
   for (const e of ENEMIES) {
     if (e.state === 'dead' || e.T.fly || Math.abs(c.v) < 4) continue;
-    if (Math.hypot(e.pos.x - c.x, e.pos.z - c.z) < 2.4) { _d.set(Math.cos(c.h), 0.3, -Math.sin(c.h)); if (damageEnemy(e, Math.abs(c.v) * 12, 'body', _d, e.pos)) hitMarker('kill'); c.v *= 0.85; }
+    if (Math.hypot(e.pos.x - c.x, e.pos.z - c.z) < 2.4) { _d.set(Math.cos(c.h), 0.3, -Math.sin(c.h)); if (dmgEnemy(e, Math.abs(c.v) * 12, 'body', _d, e.pos)) hitMarker('kill'); c.v *= 0.85; }
   }
   if (DRIVE.eng) { const r = 38 + Math.abs(c.v) * 4.5 + (f ? 12 : 0); DRIVE.eng.o.frequency.value = r; DRIVE.eng.o2.frequency.value = r * 0.5; DRIVE.eng.lp.frequency.value = 300 + Math.abs(c.v) * 40; }
   if (keys.KeyH && G.time - (c.honk || 0) > 0.6) { c.honk = G.time; AUDIO.horn(c.x, 1, c.z); }
