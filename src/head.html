@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>서울 디펜스 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root { --accent:#ffb347; --accent2:#ff5e62; --line:rgba(255,255,255,.14); }
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; overflow:hidden; background:#000; color:#fff;
+  font-family:'Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif; user-select:none; -webkit-user-select:none; }
+#game { position:fixed; inset:0; }
+#game canvas { display:block; width:100%; height:100%; }
+.hidden { display:none !important; }
+button { font-family:inherit; }
+
+/* 로딩 */
+#loading { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+  background:radial-gradient(ellipse at 50% 130%, #4a2233 0%, #0b0d14 62%); transition:opacity .9s; }
+#loading .logo { font-family:'Black Han Sans',sans-serif; font-size:60px; letter-spacing:4px; text-shadow:0 6px 40px rgba(255,120,60,.35); }
+#loading .bar { width:min(360px,70vw); height:4px; background:rgba(255,255,255,.12); border-radius:2px; overflow:hidden; }
+#loading .bar i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--accent2),var(--accent)); transition:width .3s; }
+#loading .msg { font-size:14px; color:#aab; }
+#loading .err { color:#ff8a8a; font-size:13px; max-width:80vw; white-space:pre-wrap; text-align:center; }
+
+/* 타이틀 */
+#title { position:fixed; inset:0; z-index:20; display:flex; align-items:center;
+  background:linear-gradient(90deg, rgba(6,8,14,.88) 0%, rgba(6,8,14,.55) 34%, rgba(6,8,14,0) 62%); transition:opacity .7s; }
+.title-wrap { margin-left:clamp(24px,8vw,140px); max-width:540px; }
+.kicker { letter-spacing:.5em; font-size:12px; color:var(--accent); font-weight:700; }
+.title-wrap h1 { font-family:'Black Han Sans',sans-serif; font-weight:400; font-size:clamp(60px,9vw,118px); margin:8px 0 4px; line-height:1;
+  text-shadow:0 6px 40px rgba(255,120,60,.35); }
+.tag { color:#d8d2e0; font-size:17px; margin:12px 0 34px; line-height:1.7; }
+.menu { display:flex; flex-direction:column; gap:10px; width:290px; }
+.btn { cursor:pointer; text-align:left; padding:14px 20px; font-size:17px; font-weight:700; color:#fff;
+  background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:10px; transition:all .15s; }
+.btn:hover { background:rgba(255,255,255,.14); transform:translateX(4px); }
+.btn.primary { background:linear-gradient(90deg,#ff5e62,#ff9a44); border:none; box-shadow:0 8px 30px rgba(255,94,98,.35); }
+.btn.primary:hover { filter:brightness(1.08); }
+.mode { position:fixed; inset:0; z-index:25; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px; background:rgba(4,6,12,.72); backdrop-filter:blur(8px); }
+.mode h2 { margin:0; font-family:'Black Han Sans',sans-serif; font-weight:400; font-size:40px; letter-spacing:3px; }
+.mode .cards { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; padding:0 16px; }
+.mcard { width:min(300px,86vw); padding:28px 24px 24px; border-radius:16px; border:1px solid var(--line); background:rgba(255,255,255,.05); text-align:left; transition:all .18s; }
+.mcard svg { width:54px; height:54px; margin-bottom:14px; }
+.mcard h3 { margin:0 0 4px; font-size:26px; font-weight:900; }
+.mcard small { display:block; font-size:11px; letter-spacing:.3em; font-weight:700; margin-bottom:14px; }
+.mcard p { margin:0; font-size:13px; line-height:1.7; color:#c4bfd2; }
+.mcard.go { cursor:pointer; border-color:rgba(255,160,90,.5); background:linear-gradient(160deg,rgba(255,94,98,.2),rgba(255,154,68,.1)); }
+.mcard.go small { color:var(--accent); }
+.mcard.go:hover { transform:translateY(-6px); box-shadow:0 18px 50px rgba(255,120,60,.3); border-color:var(--accent); }
+.mcard.off { cursor:not-allowed; border-color:rgba(120,200,255,.3); background:linear-gradient(160deg,rgba(60,140,255,.14),rgba(120,90,255,.08)); }
+.mcard.off small { color:#8fc4ff; }
+.mcard.off .soon { display:inline-block; margin-top:14px; font-size:10px; font-weight:900; letter-spacing:.12em; color:#10161f; background:linear-gradient(90deg,#7fd0ff,#b59bff); padding:3px 9px; border-radius:20px; }
+.mcard.off.nudge { animation:nudge .35s; }
+@keyframes nudge { 25% { transform:translateX(-7px); } 75% { transform:translateX(7px); } }
+.txt { width:180px; background:rgba(255,255,255,.07); border:1px solid var(--line); border-radius:8px; color:#fff; padding:8px 10px; font:inherit; font-size:14px; outline:none; }
+.txt:focus { border-color:#ff9a44; }
+.mode .btn { width:160px; text-align:center; }
+.mode .btn:hover { transform:none; }
+.btn.multi { display:flex; align-items:center; gap:12px; cursor:default; position:relative; border-color:rgba(120,200,255,.35); background:linear-gradient(90deg,rgba(60,140,255,.18),rgba(120,90,255,.12)); }
+.btn.multi:hover { transform:none; background:linear-gradient(90deg,rgba(60,140,255,.18),rgba(120,90,255,.12)); }
+.btn.multi svg { width:30px; height:30px; flex:none; filter:drop-shadow(0 0 6px rgba(110,190,255,.6)); }
+.btn.multi .ml { flex:1; line-height:1.15; }
+.btn.multi .ml small { display:block; font-size:10px; letter-spacing:.28em; color:#8fc4ff; font-weight:700; }
+.btn.multi .soon { white-space:nowrap; font-size:9px; font-weight:900; letter-spacing:.12em; color:#10161f; background:linear-gradient(90deg,#7fd0ff,#b59bff); padding:3px 8px; border-radius:20px; }
+.controls { margin-top:30px; display:grid; grid-template-columns:auto 1fr; gap:7px 16px; font-size:13px; color:#b9b4c4; }
+kbd { font-family:inherit; font-weight:700; color:#fff; background:rgba(255,255,255,.1); border:1px solid var(--line); border-radius:5px; padding:1px 7px; font-size:12px; }
+.best { margin-top:22px; font-size:13px; color:#9a95a8; }
+
+/* 모달 */
+.modal { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; background:rgba(4,6,10,.55); backdrop-filter:blur(6px); }
+.panel { width:min(460px,92vw); background:rgba(16,20,30,.88); border:1px solid var(--line); border-radius:16px; padding:28px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.panel h2 { margin:0 0 6px; font-family:'Black Han Sans',sans-serif; font-weight:400; font-size:36px; }
+.panel p { margin:0 0 16px; color:#bdb7cc; font-size:14px; }
+.row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:14px 0; font-size:14px; color:#cfcade; }
+.row input[type=range] { width:180px; accent-color:#ff9a44; }
+.seg { display:flex; gap:4px; background:rgba(255,255,255,.06); padding:3px; border-radius:8px; }
+.seg button { cursor:pointer; border:none; background:transparent; color:#bbb; padding:6px 11px; border-radius:6px; font-size:13px; font-weight:700; }
+.seg button.on { background:#ff9a44; color:#1a1010; }
+.panel .btn { width:100%; margin-top:10px; text-align:center; }
+.panel .btn:hover { transform:none; }
+.stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0 18px; }
+.stat { background:rgba(255,255,255,.05); border-radius:10px; padding:12px 14px; }
+.stat b { display:block; font-size:24px; } .stat span { font-size:12px; color:#9a95a8; }
+
+/* HUD */
+#hud { position:fixed; inset:0; z-index:10; pointer-events:none; transition:opacity .5s; }
+.sh { text-shadow:0 1px 8px rgba(0,0,0,.85); }
+#hud .tl { position:absolute; left:24px; top:20px; }
+.wave { font-family:'Black Han Sans',sans-serif; font-size:30px; line-height:1; }
+.wave small { font-family:'Noto Sans KR',sans-serif; font-size:13px; color:#ddd; margin-left:8px; font-weight:700; }
+.score { margin-top:6px; font-size:15px; font-weight:700; color:#ffe2b8; }
+.objective { margin-top:4px; font-size:13px; color:#cfe; }
+#compass { position:absolute; top:12px; left:50%; transform:translateX(-50%); }
+#minimapWrap { position:absolute; right:22px; top:18px; width:190px; text-align:center; }
+#minimap { width:190px; height:190px; border-radius:50%; border:2px solid rgba(255,255,255,.25); box-shadow:0 6px 24px rgba(0,0,0,.45); }
+#locname { margin-top:8px; font-weight:900; font-size:16px; }
+#roadname { font-size:12px; color:#ccc; }
+#health { position:absolute; left:24px; bottom:24px; width:300px; }
+#health .lbl { display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:6px; }
+#health .bar { height:10px; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18); border-radius:6px; overflow:hidden; }
+#health .bar i { display:block; height:100%; width:100%; background:linear-gradient(90deg,#3ddc84,#a6f06a); transition:width .15s; }
+#health .bar i.low { background:linear-gradient(90deg,#ff4d4d,#ff9a44); }
+#weapon { position:absolute; right:26px; bottom:22px; text-align:right; }
+#weapon .name { font-size:14px; font-weight:700; color:#ddd; }
+#weapon .ammo { font-family:'Black Han Sans',sans-serif; font-size:56px; line-height:1; }
+#weapon .ammo small { font-size:22px; color:#aaa; }
+#weapon .ammo.empty { color:#ff6b6b; }
+#weapon .slots { display:flex; gap:6px; justify-content:flex-end; margin-top:6px; }
+#weapon .slots span { font-size:11px; padding:2px 8px; border-radius:4px; background:rgba(0,0,0,.35); color:#aaa; border:1px solid rgba(255,255,255,.1); }
+#weapon .slots span.on { color:#1a1010; background:#ffb347; }
+#weapon .gren { margin-top:6px; font-size:13px; color:#cde; font-weight:700; }
+#hint { position:absolute; left:50%; top:62%; transform:translateX(-50%); font-size:14px; font-weight:700; color:#ffd27a; }
+#crosshair { position:absolute; left:50%; top:50%; width:0; height:0; transition:opacity .12s; }
+#crosshair i { position:absolute; background:#fff; box-shadow:0 0 2px rgba(0,0,0,.9); }
+#crosshair .t, #crosshair .b { width:2px; height:9px; left:-1px; }
+#crosshair .l, #crosshair .r { width:9px; height:2px; top:-1px; }
+#crosshair .d { width:3px; height:3px; left:-1.5px; top:-1.5px; border-radius:50%; }
+#hitmarker { position:absolute; left:50%; top:50%; width:28px; height:28px; margin:-14px; opacity:0; }
+#hitmarker::before, #hitmarker::after { content:''; position:absolute; left:13px; top:0; width:2px; height:28px; background:#fff; transform:rotate(45deg); box-shadow:0 0 3px #000; }
+#hitmarker::after { transform:rotate(-45deg); }
+#hitmarker.head::before, #hitmarker.head::after { background:#ff4d4d; }
+#hitmarker.kill::before, #hitmarker.kill::after { background:#ffb347; }
+#vignette { position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(160,0,0,.8) 100%); opacity:0; }
+#lowhp { position:absolute; inset:0; box-shadow:inset 0 0 180px rgba(255,0,0,.55); opacity:0; }
+#dmgdirs { position:absolute; left:50%; top:50%; }
+.dmgdir { position:absolute; left:-60px; top:-170px; width:120px; height:22px; transform-origin:60px 170px;
+  background:radial-gradient(ellipse at 50% 100%, rgba(255,50,50,.75), rgba(255,40,40,0) 70%); border-radius:50% 50% 0 0; transition:opacity .7s; }
+#banner { position:absolute; top:21%; width:100%; text-align:center; opacity:0; transition:opacity .6s, transform .6s; transform:translateY(-10px); }
+#banner.show { opacity:1; transform:none; }
+#banner .big { font-family:'Black Han Sans',sans-serif; font-size:66px; letter-spacing:2px; text-shadow:0 4px 30px rgba(0,0,0,.6); }
+#banner .sub { font-size:17px; font-weight:700; color:#ffd8a8; margin-top:6px; }
+#locpop { position:absolute; left:50%; top:38%; transform:translateX(-50%); text-align:center; opacity:0; transition:opacity 1.1s; }
+#locpop.show { opacity:1; }
+#locpop .big { font-family:'Black Han Sans',sans-serif; font-size:46px; }
+#locpop .sub { font-size:13px; color:#ddd; letter-spacing:.3em; }
+#locpop .line { width:170px; height:1px; margin:8px auto; background:linear-gradient(90deg,transparent,#fff,transparent); }
+#killfeed { position:absolute; right:24px; top:262px; display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+.kf { font-size:13px; font-weight:700; background:rgba(0,0,0,.42); padding:4px 10px; border-radius:6px; border-left:3px solid #ffb347; transition:opacity .5s; }
+.kf.hs { border-left-color:#ff4d4d; }
+#bossbar { position:absolute; top:66px; left:50%; transform:translateX(-50%); width:min(560px,60vw); text-align:center; }
+#bossbar .nm { font-family:'Black Han Sans',sans-serif; font-size:20px; color:#e7b6ff; margin-bottom:6px; }
+#bossbar .bar { height:10px; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.2); border-radius:6px; overflow:hidden; }
+#bossbar .bar i { display:block; height:100%; width:100%; background:linear-gradient(90deg,#b44dff,#ff4dd2); transition:width .2s; }
+#bigmap { position:fixed; inset:0; z-index:12; background:rgba(5,8,12,.72); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; pointer-events:none; }
+#bigmap canvas { display:block; }
+#bigmap .mhead { position:absolute; top:22px; left:0; right:0; text-align:center; font-family:'Black Han Sans',sans-serif; font-size:30px; letter-spacing:2px; text-shadow:0 2px 12px #000; }
+#bigmap .mhint { position:absolute; bottom:22px; left:0; right:0; text-align:center; font-size:13px; color:#cfcade; text-shadow:0 1px 6px #000; }
+#bigmap .legend { position:absolute; left:26px; bottom:22px; font-size:12px; color:#ddd; line-height:1.9; text-shadow:0 1px 6px #000; }
+#bigmap .legend i { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:-1px; }
+#skillPick { z-index:35; background:rgba(4,6,12,.74); }
+.skwrap { text-align:center; }
+.skwrap h2 { font-family:'Black Han Sans',sans-serif; font-weight:400; font-size:46px; margin:0 0 6px; text-shadow:0 4px 24px rgba(255,150,60,.35); }
+.skwrap p { color:#cfcade; margin:0 0 26px; font-size:14px; }
+.cards { display:flex; gap:18px; justify-content:center; flex-wrap:wrap; padding:0 16px; }
+.scard { position:relative; width:230px; padding:28px 18px 22px; border-radius:16px; background:linear-gradient(180deg, rgba(34,40,60,.96), rgba(18,22,34,.96)); border:1px solid rgba(255,255,255,.16); color:#fff; cursor:pointer; transition:transform .15s, border-color .15s, box-shadow .15s; font-family:inherit; }
+.scard:hover { transform:translateY(-8px); border-color:#ffb347; box-shadow:0 18px 50px rgba(255,150,60,.25); }
+.scard.act { border-color:rgba(120,200,255,.55); }
+.sk-key { position:absolute; top:10px; left:14px; font-size:12px; color:#9a95a8; font-weight:700; }
+.sk-ic { font-size:58px; line-height:1; margin-bottom:10px; }
+.sk-nm { font-size:21px; font-weight:900; margin-bottom:4px; }
+.sk-lv { font-size:12px; color:#ffb347; font-weight:700; margin-bottom:12px; }
+.sk-ds { font-size:14px; color:#cfcade; line-height:1.55; min-height:44px; }
+#skillBar { position:absolute; left:24px; bottom:66px; display:flex; gap:7px; flex-wrap:wrap; max-width:330px; }
+.skb { position:relative; width:34px; height:34px; border-radius:8px; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; font-size:18px; }
+.skb b { position:absolute; right:-5px; bottom:-6px; font-size:11px; background:#ffb347; color:#1a1010; border-radius:6px; padding:0 4px; }
+.tier { font-family:'Noto Sans KR',sans-serif; font-size:13px; color:#ff8a6a; margin-left:10px; font-weight:900; }
+#fade { position:fixed; inset:0; background:#000; z-index:40; pointer-events:none; opacity:0; transition:opacity .7s; }
+#fps { position:fixed; left:6px; bottom:4px; z-index:15; font-size:11px; color:#8f8; font-family:monospace; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" class="hidden">
+  <div id="vignette"></div><div id="lowhp"></div><div id="dmgdirs"></div>
+  <div class="tl sh">
+    <div class="wave" id="waveTxt">WAVE 0<small id="enemyTxt"></small></div>
+    <div class="score" id="scoreTxt">0점</div>
+    <div class="objective" id="objTxt"></div>
+  </div>
+  <canvas id="compass" width="560" height="46"></canvas>
+  <div id="bossbar" class="hidden sh"><div class="nm">외계 모선 「하늘의 군주」</div><div class="bar"><i id="bossFill"></i></div></div>
+  <div id="minimapWrap" class="sh"><canvas id="minimap" width="190" height="190"></canvas><div id="locname"></div><div id="roadname"></div></div>
+  <div id="killfeed"></div>
+  <div id="banner" class="sh"><div class="big" id="bannerBig"></div><div class="sub" id="bannerSub"></div></div>
+  <div id="locpop" class="sh"><div class="big" id="locBig"></div><div class="line"></div><div class="sub" id="locSub"></div></div>
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
+  <div id="hitmarker"></div>
+  <div id="hint" class="sh"></div>
+  <div id="skillBar"></div>
+  <div id="health" class="sh"><div class="lbl"><span>체력</span><span id="hpTxt">100</span></div><div class="bar"><i id="hpFill"></i></div></div>
+  <div id="weapon" class="sh">
+    <div class="name" id="wName"></div>
+    <div class="ammo" id="wAmmo">0<small> / ∞</small></div>
+    <div class="slots"><span id="slot0">1 권총</span><span id="slot1">2 소총</span><span id="slot2">3 산탄총</span></div>
+    <div class="gren" id="grenTxt">수류탄 ×3 [G]</div>
+  </div>
+</div>
+
+<div id="title" class="hidden">
+  <div class="title-wrap">
+    <div class="kicker">SEOUL DEFENSE · 3D</div>
+    <h1>서울 디펜스</h1>
+    <p class="tag">노을 지는 서울 하늘에 외계 함대가 내려왔다.<br>광화문에서 한강, 남산을 지나 강남까지 — 이 도시를 지켜라.</p>
+    <div class="menu">
+      <button class="btn primary" id="btnStart">게임 시작</button>
+      <button class="btn" id="btnSettings">설정</button>
+    </div>
+    <div class="controls">
+      <kbd>WASD</kbd><span>이동 · <kbd>Shift</kbd> 달리기 · <kbd>Space</kbd> 점프</span>
+      <kbd>마우스</kbd><span>조준 · 좌클릭 사격 · 우클릭 정조준</span>
+      <kbd>1 2 3</kbd><span>권총 · K2 소총 · 산탄총 (휠로도 교체)</span>
+      <kbd>R</kbd><span>재장전 · <kbd>G</kbd> 수류탄 · <kbd>M</kbd> 지도 · <kbd>F</kbd> 차량 · <kbd>Esc</kbd> 일시정지</span>
+    </div>
+    <div class="best" id="bestTxt"></div>
+  </div>
+</div>
+
+<div id="modeSel" class="mode hidden">
+  <h2>게임 모드 선택</h2>
+  <div class="cards">
+    <div class="mcard go" id="cardSurvival">
+      <svg viewBox="0 0 32 32" fill="none" stroke="#ffb347" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="16" r="10"/><circle cx="16" cy="16" r="3.5"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6"/></svg>
+      <h3>서바이벌</h3><small>SINGLE PLAYER</small>
+      <p>혼자서 서울을 지킨다.<br>밀려오는 외계인을 막고 보스를 격추하라.</p>
+    </div>
+    <div class="mcard off" id="cardMulti">
+      <svg viewBox="0 0 32 32" fill="none" stroke="#8fd0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="4.2"/><circle cx="22" cy="12" r="3.4" stroke="#b59bff"/><path d="M3.5 26c0-4.6 3.4-8 7.5-8s7.5 3.4 7.5 8"/><path d="M19 19.2c.9-.5 1.8-.7 2.9-.7 3.7 0 6.6 3 6.6 7.3" stroke="#b59bff"/></svg>
+      <h3>멀티 플레이</h3><small>MULTIPLAYER</small>
+      <p>친구들과 함께 서울을 지킨다.</p>
+      <span class="soon">COMING SOON</span>
+    </div>
+  </div>
+  <button class="btn" id="btnModeBack">뒤로</button>
+</div>
+
+<div id="mpSet" class="modal hidden">
+  <div class="panel">
+    <h2>멀티 플레이 설정</h2>
+    <p>함께 플레이하기 전에 먼저 설정해 주세요.</p>
+    <div class="row"><span>닉네임</span><input type="text" id="mpName" maxlength="12" placeholder="이름 입력" class="txt"></div>
+    <div class="row"><span>방 방식</span><div class="seg" id="segMpMode"><button data-v="create">방 만들기</button><button data-v="join">방 참가</button></div></div>
+    <div class="row" id="rowMpMax"><span>최대 인원</span><div class="seg" id="segMpMax"><button data-v="2">2명</button><button data-v="3">3명</button><button data-v="4">4명</button></div></div>
+    <div class="row hidden" id="rowMpCode"><span>방 코드</span><input type="text" id="mpCode" maxlength="6" placeholder="6자리 코드" class="txt" style="text-transform:uppercase"></div>
+    <div class="row"><span>친구 사격</span><div class="seg" id="segMpFF"><button data-v="off">끄기</button><button data-v="on">켜기</button></div></div>
+    <p id="mpMsg" style="min-height:20px;color:#8fc4ff;margin:6px 0 0"></p>
+    <button class="btn primary" id="btnMpGo">방 만들기</button>
+    <button class="btn" id="btnMpBack">뒤로</button>
+  </div>
+</div>
+
+<div id="pause" class="modal hidden">
+  <div class="panel">
+    <h2>일시정지</h2>
+    <p id="pauseMsg">클릭하면 다시 시작합니다.</p>
+    <button class="btn primary" id="btnResume">계속하기</button>
+    <button class="btn" id="btnPauseSettings">설정</button>
+    <button class="btn" id="btnQuit">타이틀로</button>
+  </div>
+</div>
+
+<div id="settings" class="modal hidden">
+  <div class="panel">
+    <h2>설정</h2>
+    <div class="row"><span>그래픽 품질</span><div class="seg" id="segQuality"><button data-v="low">낮음</button><button data-v="medium">중간</button><button data-v="high">높음</button></div></div>
+    <div class="row"><span>시간대</span><div class="seg" id="segTod"><button data-v="day">낮</button><button data-v="dusk">노을</button><button data-v="night">밤</button></div></div>
+    <div class="row"><span>마우스 감도</span><input type="range" id="rngSens" min="0.2" max="3" step="0.05"></div>
+    <div class="row"><span>시야각 (FOV)</span><input type="range" id="rngFov" min="60" max="100" step="1"></div>
+    <div class="row"><span>음량</span><input type="range" id="rngVol" min="0" max="1" step="0.05"></div>
+    <button class="btn primary" id="btnSettingsClose">닫기</button>
+  </div>
+</div>
+
+<div id="over" class="modal hidden">
+  <div class="panel">
+    <h2 style="color:#ff6b6b">작전 실패</h2>
+    <p id="overMsg"></p>
+    <div class="stats">
+      <div class="stat"><b id="stScore">0</b><span>점수</span></div>
+      <div class="stat"><b id="stWave">0</b><span>도달 웨이브</span></div>
+      <div class="stat"><b id="stKills">0</b><span>처치</span></div>
+      <div class="stat"><b id="stAcc">0%</b><span>명중률 · 헤드샷</span></div>
+    </div>
+    <button class="btn primary" id="btnRetry">다시 도전</button>
+    <button class="btn" id="btnOverTitle">타이틀로</button>
+  </div>
+</div>
+
+<div id="skillPick" class="modal hidden">
+  <div class="skwrap"><h2 id="skTitle">스킬 선택</h2><p id="skSub"></p><div class="cards" id="skCards"></div></div>
+</div>
+<div id="bigmap" class="hidden">
+  <canvas id="mapCanvas"></canvas>
+  <div class="mhead">서울특별시 작전 지도</div>
+  <div class="legend"><div><i style="background:#fff"></i>나</div><div><i style="background:#ff4545"></i>외계인</div><div><i style="background:#ff6bd0"></i>드론</div><div><i style="background:#d66bff"></i>모선</div><div><i style="background:#6dff8a"></i>구급상자 · <i style="background:#ffd27a"></i>수류탄</div></div>
+  <div class="mhint">M 키로 닫기 · 마우스 휠로 확대/축소</div>
+</div>
+<div id="fade"></div>
+<div id="fps" class="hidden"></div>
+<div id="loading">
+  <div class="logo">서울 디펜스</div>
+  <div class="bar"><i id="loadBar"></i></div>
+  <div class="msg" id="loadMsg">불러오는 중…</div>
+  <div class="err" id="loadErr"></div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
