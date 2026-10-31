@@ -17,16 +17,18 @@ function toggleDrive() {
     _pp.x = c.x + sx * 2.4; _pp.z = c.z + cx * 2.4; resolveCircle(_pp, 0.4, 0.4, 1.8);
     P.pos.set(_pp.x, groundH(_pp.x, _pp.z), _pp.z); P.vel.set(0, 0, 0); P.yaw = c.h - Math.PI / 2;
     DRIVE.parked.push(c); DRIVE.car = null; showWeapon(P.weapon); engine(false);
+    netCarEvent({ t: 'cp', uid: c.uid, kind: c.kind, x: c.x, z: c.z, h: c.h, c: [c.cr, c.cg, c.cb] });
     return;
   }
   const n = nearCar(); if (!n) return;
   let c;
-  if (n.parked) { c = n.parked; DRIVE.parked.splice(DRIVE.parked.indexOf(c), 1); }
+  if (n.parked) { c = n.parked; DRIVE.parked.splice(DRIVE.parked.indexOf(c), 1); netCarEvent({ t: 'cu', uid: c.uid }); }
   else {
     n.ln.cars.splice(n.i, 1);
+    netCarEvent({ t: 'cs', uid: n.c.uid });
     const ln = n.ln;
     const h = ln.axis === 'x' ? (ln.dir > 0 ? 0 : Math.PI) : (ln.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
-    c = { kind: n.c.kind, idx: n.c.idx, x: n.c.x, z: n.c.z, h, v: n.c.v, cr: n.c.cr, cg: n.c.cg, cb: n.c.cb };
+    c = { uid: n.c.uid, kind: n.c.kind, idx: n.c.idx, x: n.c.x, z: n.c.z, h, v: n.c.v, cr: n.c.cr, cg: n.c.cg, cb: n.c.cb };
   }
   c.camH = c.h; engine(true);
   DRIVE.car = c; VMS.forEach(v => v.g.visible = false); mouseDown = rmb = false; AUDIO.click(0.4, 600);

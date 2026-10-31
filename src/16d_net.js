@@ -5,7 +5,7 @@
 // ============================================================
 const NET = {
   on: false, role: null, peer: null, conns: new Map(), hostConn: null, myId: 'H', code: '', max: 4, started: false,
-  players: [], remotes: new Map(), eid: 1, pid: 1, ps: 0, sn: 0, st: 0, myName: '', err: '', ready: false, slot: 0,
+  players: [], remotes: new Map(), toff: 0, tr: 0, eid: 1, pid: 1, ps: 0, sn: 0, st: 0, myName: '', err: '', ready: false, slot: 0,
 };
 const NET_PREFIX = 'sdef3d-';
 const SLOT_COLORS = ['#4da3ff', '#ffb347', '#7dff9a', '#ff7de0'];
@@ -13,6 +13,8 @@ let TG = { pos: P.pos, vel: P.vel, remote: null };   // 지금 AI가 노리는 �
 const TYPE_CODE = ['grunt', 'runner', 'drone', 'brute', 'boss'];
 const STATE_CODE = ['spawn', 'chase', 'attack', 'shoot', 'arrive', 'fight'];
 const isHost = () => NET.on && NET.role === 'host';
+// 교통용 공유 시계: 참가자는 방장의 시간에 맞춘다 (신호등 · 차 흐름이 같아진다)
+const tclock = () => G.time + (NET.on && NET.role === 'client' ? NET.toff : 0);
 const isClient = () => NET.on && NET.role === 'client';
 
 // ---------- 전송 ----------
@@ -34,7 +36,7 @@ function netCleanup() {
   for (const r of NET.remotes.values()) { scene.remove(r.g); }
   NET.remotes.clear();
   try { if (NET.peer) NET.peer.destroy(); } catch (e) {}
-  Object.assign(NET, { on: false, role: null, peer: null, hostConn: null, started: false, players: [], ready: false, err: '', code: '' });
+  Object.assign(NET, { toff: 0, on: false, role: null, peer: null, hostConn: null, started: false, players: [], ready: false, err: '', code: '' });
   NET.conns.clear();
   renderTeam();
 }
@@ -106,6 +108,8 @@ function hostOnMsg(conn, m) {
     hostCheckOver();
   } else if (m.t === 'fx') {
     netBcast(m, id); handleFx(m);
+  } else if (m.t === 'cs' || m.t === 'cp' || m.t === 'cu') {
+    applyCarEvent(m); netBcast(m, id);
   }
 }
 async function netJoin(code, name) {
@@ -138,6 +142,36 @@ function clientLost(msg) {
   netCleanup(); show('mpLobby', false);
   if (was !== 'title') { toTitle(); }
   setTimeout(() => alert(msg), 600);
+}
+
+// ---------- 교통 동기화 ----------
+function netCarEvent(m) { if (NET.on && NET.started) { if (isHost()) netBcast(m); else netToHost(m); } }
+function applyCarEvent(m) {
+  if (m.t === 'cs') { const car = CAR_BY_UID[m.uid]; if (car && car.lane) { const i = car.lane.cars.indexOf(car); if (i >= 0) car.lane.cars.splice(i, 1); } }
+  else if (m.t === 'cp') { DRIVE.parked = DRIVE.parked.filter(p => p.uid !== m.uid); DRIVE.parked.push({ uid: m.uid, kind: m.kind, x: m.x, z: m.z, h: m.h, v: 0, cr: m.c[0], cg: m.c[1], cb: m.c[2], camH: m.h }); }
+  else if (m.t === 'cu') { DRIVE.parked = DRIVE.parked.filter(p => p.uid !== m.uid); }
+}
+// 방장의 차량 상태(플레이어 근처만)를 보내면 참가자가 자기 시뮬레이션을 거기에 맞춘다
+function trafficSnapshot() {
+  const pts = [P.pos, ...[...NET.remotes.values()].map(r => r.pos)], arr = [];
+  for (const ln of LANES) for (const car of ln.cars) {
+    let near = false;
+    for (const p of pts) if (Math.abs(car.x - p.x) < 520 && Math.abs(car.z - p.z) < 520) { near = true; break; }
+    if (near) arr.push(car.uid, Math.round(car.s * 10), Math.round(car.v * 10));
+  }
+  return arr;
+}
+function applyTraffic(m) {
+  NET.toff += ((m.tt - G.time) - NET.toff) * 0.5;
+  const touched = new Set(), a = m.a; let esum = 0, en = 0;
+  for (let i = 0; i < a.length; i += 3) {
+    const car = CAR_BY_UID[a[i]]; if (!car || !car.lane) continue;
+    const hv = a[i + 2] / 10, hs = a[i + 1] / 10 + hv * 0.05, d = hs - car.s;   // 전송 지연(약 50ms)만큼 앞으로 보정
+    if (Math.abs(d) > 12) { car.s = hs; touched.add(car.lane); } else { car.s += d * 0.6; esum += Math.abs(d); en++; }
+    car.v += (hv - car.v) * 0.6;
+  }
+  for (const ln of touched) ln.cars.sort((p, q) => p.s - q.s);
+  NET.trErr = (en ? (esum / en).toFixed(2) : '-') + 'm avg, snaps=' + touched.size + ', cars=' + (a.length / 3);
 }
 
 // ---------- 로비 UI ----------
@@ -188,6 +222,8 @@ function clientOnMsg(m) {
     case 'revive': revivePlayer(); break;
     case 'over': netGameOver(m); break;
     case 'fx': handleFx(m); break;
+    case 'tr': applyTraffic(m); break;
+    case 'cs': case 'cp': case 'cu': applyCarEvent(m); break;
   }
 }
 
@@ -229,13 +265,13 @@ function ensureRemote(id, name, slot) {
 }
 function applyRemoteState(r, m) {
   r.tpos.set(m.x, m.y, m.z); r.tyaw = m.yaw; r.pitch = m.pitch; r.hp = m.hp; r.alive = !!m.al; r.drv = !!m.dr; r.weapon = m.w; r.last = G.time;
-  r.maxHp = m.mh || 100;
+  r.maxHp = m.mh || 100; r.ci = m.ci || 0;
 }
 function applyPlayersList(list) {
   for (const a of list) {
-    const [id, name, slot, x, y, z, yaw, pitch, w, hp, al, dr, mh] = a;
+    const [id, name, slot, x, y, z, yaw, pitch, w, hp, al, dr, mh, ci] = a;
     if (id === NET.myId) continue;
-    const r = ensureRemote(id, name, slot); applyRemoteState(r, { x, y, z, yaw, pitch, w, hp, al, dr, mh });
+    const r = ensureRemote(id, name, slot); applyRemoteState(r, { x, y, z, yaw, pitch, w, hp, al, dr, mh, ci });
   }
   // 목록에 없는 아바타 정리
   for (const id of [...NET.remotes.keys()]) if (id !== NET.myId && !list.some(a => a[0] === id)) { const r = NET.remotes.get(id); scene.remove(r.g); NET.remotes.delete(id); renderTeam(); }
@@ -400,14 +436,17 @@ function netTick(dt) {
   NET.ps -= dt;
   if (NET.ps <= 0) {
     NET.ps = 1 / 15;
-    const me = [NET.myId, NET.myName, NET.slot, +P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2), +P.yaw.toFixed(3), +P.pitch.toFixed(3), P.weapon, Math.round(P.hp), P.alive ? 1 : 0, DRIVE.car ? 1 : 0, P.maxHp];
+    const dc = DRIVE.car, ci = dc ? [dc.kind === 'bus' ? 1 : 0, +dc.h.toFixed(3), +dc.cr.toFixed(2), +dc.cg.toFixed(2), +dc.cb.toFixed(2)] : 0;
+    const me = [NET.myId, NET.myName, NET.slot, +P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2), +P.yaw.toFixed(3), +P.pitch.toFixed(3), P.weapon, Math.round(P.hp), P.alive ? 1 : 0, DRIVE.car ? 1 : 0, P.maxHp, ci];
     if (isHost()) {
       const list = [me];
-      for (const r of NET.remotes.values()) list.push([r.id, r.name, r.slot, +r.tpos.x.toFixed(2), +r.tpos.y.toFixed(2), +r.tpos.z.toFixed(2), +r.tyaw.toFixed(3), +r.pitch.toFixed(3), r.weapon, Math.round(r.hp), r.alive ? 1 : 0, r.drv ? 1 : 0, r.maxHp || 100]);
+      for (const r of NET.remotes.values()) list.push([r.id, r.name, r.slot, +r.tpos.x.toFixed(2), +r.tpos.y.toFixed(2), +r.tpos.z.toFixed(2), +r.tyaw.toFixed(3), +r.pitch.toFixed(3), r.weapon, Math.round(r.hp), r.alive ? 1 : 0, r.drv ? 1 : 0, r.maxHp || 100, r.ci || 0]);
       netBcast({ t: 'pl', p: list });
-    } else netToHost({ t: 'ps', x: me[3], y: me[4], z: me[5], yaw: me[6], pitch: me[7], w: me[8], hp: me[9], al: me[10], dr: me[11], mh: me[12] });
+    } else netToHost({ t: 'ps', x: me[3], y: me[4], z: me[5], yaw: me[6], pitch: me[7], w: me[8], hp: me[9], al: me[10], dr: me[11], mh: me[12], ci: me[13] });
   }
   if (!isHost()) return;
+  NET.tr -= dt;
+  if (NET.tr <= 0) { NET.tr = 0.4; netBcast({ t: 'tr', tt: +G.time.toFixed(3), a: trafficSnapshot() }); }
   NET.sn -= dt;
   if (NET.sn <= 0) {
     NET.sn = 1 / 12;

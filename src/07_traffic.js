@@ -2,6 +2,7 @@
 //  교통: 차선별 차량 흐름 + 신호 대기 + 앞차 간격 + 사람 앞에서 정지
 // ============================================================
 const LANES = [];
+const CAR_BY_UID = [];
 const CAR_TYPES = {
   sedan: { len: 4.6, wid: 1.85, hgt: 1.5 },
   bus: { len: 11, wid: 2.5, hgt: 3.2 },
@@ -124,6 +125,7 @@ function buildTraffic() {
   }
   const counts = { sedan: 0, bus: 0 };
   for (const ln of LANES) for (const c of ln.cars) c.idx = counts[c.kind]++;
+  { let uid = 0; for (const ln of LANES) for (const c of ln.cars) { c.uid = uid++; c.lane = ln; CAR_BY_UID.push(c); } }
   carsTotal = counts.sedan + counts.bus;
   const c = new THREE.Color();
   const CAPS = { sedan: { near: 220, far: 900 }, bus: { near: 40, far: 160 } };
@@ -147,7 +149,7 @@ function laneCarPos(ln, car) {
   else { car.x = car.s * ln.dir; car.z = ln.c; }
 }
 function updateTraffic(dt) {
-  const t = G.time, px = P.pos.x, pz = P.pos.z;
+  const t = tclock(), px = P.pos.x, pz = P.pos.z;
   for (const ln of LANES) {
     const cars = ln.cars, n = cars.length;
     for (let k = n - 1; k >= 0; k--) {
@@ -216,6 +218,12 @@ function updateTraffic(dt) {
   }
   for (const car of DRIVE.parked) putCar(car, car.h);
   if (DRIVE.car) putCar(DRIVE.car, DRIVE.car.h);
+  for (const r of remoteList()) if (r.drv && r.ci) {   // 친구가 운전 중인 차
+    const o = r.carObj || (r.carObj = {});
+    o.x = r.pos.x; o.z = r.pos.z; o.kind = r.ci[0] ? 'bus' : 'sedan'; o.cr = r.ci[2]; o.cg = r.ci[3]; o.cb = r.ci[4];
+    r.ch = r.ch === undefined ? r.ci[1] : r.ch + wrapAngle(r.ci[1] - r.ch) * 0.3;
+    putCar(o, r.ch);
+  }
   for (const k in carMeshes) {
     const m = carMeshes[k];
     m.body.count = m.lights.count = m.n;

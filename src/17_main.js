@@ -160,7 +160,7 @@ function loop(now) {
   const mpLive = NET.on && (G.state === 'paused' || G.state === 'skill');
   if (!mpLive && (G.state === 'paused' || G.state === 'loading' || G.state === 'skill')) { if (G.state !== 'loading') renderFrame(); return; }
   G.time += dt; U.time.value = G.time;
-  updateSignals(G.time); animateFlags(G.time);
+  updateSignals(tclock()); animateFlags(G.time);
   updateBoats(dt);
   WATER.normal.offset.x += dt * 0.006; WATER.normal.offset.y += dt * 0.003;
   const blink = Math.sin(G.time * 3) > 0.3 ? 1 : 0.15;
@@ -266,10 +266,11 @@ window.__SD = {
   key: (code, on) => { keys[code] = on; },
   toCar: () => { let b = null, bd = 1e9; for (const ln of LANES) for (const c of ln.cars) { const d = Math.hypot(c.x - 880, c.z - 330); if (d < bd) { bd = d; b = c; } } P.pos.set(b.x + 2, 0, b.z); return [b.x, b.z]; },
   drive: () => !!DRIVE.car,
+  carsNear: () => { const o = []; for (const ln of LANES) for (const c of ln.cars) { if (Math.abs(c.x - 800) < 150 && Math.abs(c.z - 340) < 150) o.push(c.uid + ':' + c.x.toFixed(0) + ',' + c.z.toFixed(0)); } return o.sort().join(' '); },
   mpHost: (n, m, c) => netHost(n || 'Host', m || 2, c).then(() => NET.code),
   mpJoin: (c, n) => netJoin(c, n || 'Guest').then(() => 'joined'),
   mpStart: () => { hostStartMatch(); return 'start'; },
-  net: () => JSON.stringify({ on: NET.on, role: NET.role, code: NET.code, players: NET.players.map(p => p.name), remotes: [...NET.remotes.values()].map(r => r.name + ':' + r.pos.x.toFixed(0) + ',' + r.pos.z.toFixed(0)), started: NET.started, state: G.state, enemies: ENEMIES.length, wave: G.wave, ws: G.waveState }),
+  net: () => JSON.stringify({ on: NET.on, role: NET.role, code: NET.code, players: NET.players.map(p => p.name), remotes: [...NET.remotes.values()].map(r => r.name + ':' + r.pos.x.toFixed(0) + ',' + r.pos.z.toFixed(0)), started: NET.started, trErr: NET.trErr, toff: +NET.toff.toFixed(2), state: G.state, enemies: ENEMIES.length, wave: G.wave, ws: G.waveState }),
   pick: (i) => chooseSkill(SKST.cards[i]),
   sk: () => JSON.stringify(P.sk) + ' tier=' + tierOf() + ' state=' + G.state,
   setWave: (n) => { G.wave = n; },
