@@ -51,9 +51,10 @@ button { font-family:inherit; }
 .mcard.go { cursor:pointer; border-color:rgba(255,160,90,.5); background:linear-gradient(160deg,rgba(255,94,98,.2),rgba(255,154,68,.1)); }
 .mcard.go small { color:var(--accent); }
 .mcard.go:hover { transform:translateY(-6px); box-shadow:0 18px 50px rgba(255,120,60,.3); border-color:var(--accent); }
-.mcard.off { cursor:not-allowed; border-color:rgba(120,200,255,.3); background:linear-gradient(160deg,rgba(60,140,255,.14),rgba(120,90,255,.08)); }
+.mcard.off { cursor:pointer; border-color:rgba(120,200,255,.3); background:linear-gradient(160deg,rgba(60,140,255,.14),rgba(120,90,255,.08)); }
 .mcard.off small { color:#8fc4ff; }
 .mcard.off .soon { display:inline-block; margin-top:14px; font-size:10px; font-weight:900; letter-spacing:.12em; color:#10161f; background:linear-gradient(90deg,#7fd0ff,#b59bff); padding:3px 9px; border-radius:20px; }
+.mcard.off:hover { transform:translateY(-6px); box-shadow:0 18px 50px rgba(100,140,255,.3); border-color:#8fc4ff; }
 .mcard.off.nudge { animation:nudge .35s; }
 @keyframes nudge { 25% { transform:translateX(-7px); } 75% { transform:translateX(7px); } }
 .txt { width:180px; background:rgba(255,255,255,.07); border:1px solid var(--line); border-radius:8px; color:#fff; padding:8px 10px; font:inherit; font-size:14px; outline:none; }
@@ -245,8 +246,7 @@ kbd { font-family:inherit; font-weight:700; color:#fff; background:rgba(255,255,
     <div class="mcard off" id="cardMulti">
       <svg viewBox="0 0 32 32" fill="none" stroke="#8fd0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="4.2"/><circle cx="22" cy="12" r="3.4" stroke="#b59bff"/><path d="M3.5 26c0-4.6 3.4-8 7.5-8s7.5 3.4 7.5 8"/><path d="M19 19.2c.9-.5 1.8-.7 2.9-.7 3.7 0 6.6 3 6.6 7.3" stroke="#b59bff"/></svg>
       <h3>멀티 플레이</h3><small>MULTIPLAYER</small>
-      <p>친구들과 함께 서울을 지킨다.</p>
-      <span class="soon">COMING SOON</span>
+      <p>친구들과 함께 서울을 지킨다.<br>방 코드로 최대 4명까지 같이 플레이.</p>
     </div>
   </div>
   <button class="btn" id="btnModeBack">뒤로</button>
