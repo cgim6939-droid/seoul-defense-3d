@@ -5,20 +5,24 @@ const LAMPS = [];     // {x,z,rot,y}
 const WATER = {};
 
 function computeCrossings() {
-  // 남산을 관통하는 도로마다 터널 입구 위치 계산
+  // 남산을 관통하는 도로마다 터널 구간(산이 천장보다 충분히 높은 곳) 계산
+  const TH = 12, W = RH + 1.5;
+  const scan = (f, c0) => {
+    if (f(c0) < TH) return null;
+    let a0 = c0, a1 = c0;
+    while (f(a0) >= TH) a0 -= 0.5;
+    while (f(a1) >= TH) a1 += 0.5;
+    return [a0 + 0.5, a1 - 0.5];
+  };
   for (const x of VX) {
     if (Math.abs(x - NAMSAN.x) >= NAMSAN.r - 5) continue;
-    let a0 = null, a1 = null;
-    for (let z = NAMSAN.z - NAMSAN.r; z < NAMSAN.z; z += 0.5) if (hillRaw(x, z) >= 6) { a0 = z; break; }
-    for (let z = NAMSAN.z + NAMSAN.r; z > NAMSAN.z; z -= 0.5) if (hillRaw(x, z) >= 6) { a1 = z; break; }
-    if (a0 !== null && a1 !== null) CROSSINGS.push({ axis: 'v', c: x, a0, a1 });
+    const r = scan((z) => Math.min(hillRaw(x, z), hillRaw(x - W, z), hillRaw(x + W, z)), NAMSAN.z);
+    if (r) CROSSINGS.push({ axis: 'v', c: x, a0: r[0], a1: r[1] });
   }
   for (const z of HZ) {
     if (Math.abs(z - NAMSAN.z) >= NAMSAN.r - 5) continue;
-    let a0 = null, a1 = null;
-    for (let x = NAMSAN.x - NAMSAN.r; x < NAMSAN.x; x += 0.5) if (hillRaw(x, z) >= 6) { a0 = x; break; }
-    for (let x = NAMSAN.x + NAMSAN.r; x > NAMSAN.x; x -= 0.5) if (hillRaw(x, z) >= 6) { a1 = x; break; }
-    if (a0 !== null && a1 !== null) CROSSINGS.push({ axis: 'h', c: z, a0, a1 });
+    const r = scan((x) => Math.min(hillRaw(x, z), hillRaw(x, z - W), hillRaw(x, z + W)), NAMSAN.x);
+    if (r) CROSSINGS.push({ axis: 'h', c: z, a0: r[0], a1: r[1] });
   }
 }
 

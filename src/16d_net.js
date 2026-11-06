@@ -8,6 +8,11 @@ const NET = {
   players: [], remotes: new Map(), toff: 0, tr: 0, eid: 1, pid: 1, ps: 0, sn: 0, st: 0, myName: '', err: '', ready: false, slot: 0,
 };
 const NET_PREFIX = 'sdef3d-';
+// 서로 다른 와이파이/통신사끼리도 연결되도록 STUN + 공개 TURN 중계 서버를 함께 쓴다
+const NET_OPTS = () => ({ debug: 0, config: { iceServers: [
+  { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
+], iceCandidatePoolSize: 4 } });
 const SLOT_COLORS = ['#4da3ff', '#ffb347', '#7dff9a', '#ff7de0'];
 let TG = { pos: P.pos, vel: P.vel, remote: null };   // 지금 AI가 노리는 대상
 const TYPE_CODE = ['grunt', 'runner', 'drone', 'brute', 'boss'];
@@ -50,7 +55,7 @@ async function netHost(name, max, forced) {
     const code = (tries === 0 && forced) ? forced : rndCode();
     try {
       await new Promise((res, rej) => {
-        const peer = new Peer(NET_PREFIX + code, { debug: 0 });
+        const peer = new Peer(NET_PREFIX + code, NET_OPTS());
         const to = setTimeout(() => { try { peer.destroy(); } catch (e) {} rej(new Error('timeout')); }, 9000);
         peer.on('open', () => { clearTimeout(to); NET.peer = peer; NET.code = code; res(); });
         peer.on('error', (e) => { clearTimeout(to); try { peer.destroy(); } catch (x) {} rej(e); });
@@ -114,12 +119,12 @@ function hostOnMsg(conn, m) {
 }
 async function netJoin(code, name) {
   await loadPeerLib();
-  NET.myName = name; NET.role = 'client'; NET.code = code.toUpperCase();
+  NET.myName = name; NET.role = 'client'; NET.code = String(code).trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   await new Promise((res, rej) => {
-    const peer = new Peer({ debug: 0 });
+    const peer = new Peer(NET_OPTS());
     let settled = false;
     const fail = (msg) => { if (settled) return; settled = true; try { peer.destroy(); } catch (e) {} rej(new Error(msg)); };
-    const to = setTimeout(() => fail('방을 찾지 못했어요. 코드를 확인해 주세요.'), 14000);
+    const to = setTimeout(() => fail('방에 연결하지 못했어요. 코드가 맞는지, 방장이 방을 열어 둔 상태인지 확인해 주세요.'), 20000);
     peer.on('error', (e) => { clearTimeout(to); fail(e && e.type === 'peer-unavailable' ? '그런 방이 없어요. 코드를 다시 확인해 주세요.' : '연결 서버에 접속하지 못했어요.'); });
     peer.on('open', (myid) => {
       NET.myId = myid;

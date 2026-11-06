@@ -221,7 +221,7 @@ function updateWalker(e, dt) {
     e.leap -= dt; e.vy -= 22 * dt;
     _pp.x = e.pos.x + e.vel.x * dt; _pp.z = e.pos.z + e.vel.z * dt; resolveCircle(_pp, e.r, e.pos.y + 0.3, e.pos.y + 1);
     if (!isWater(_pp.x, _pp.z)) { e.pos.x = _pp.x; e.pos.z = _pp.z; }
-    e.pos.y = Math.max(groundH(e.pos.x, e.pos.z), e.pos.y + e.vy * dt);
+    e.pos.y = Math.max(groundH(e.pos.x, e.pos.z, e.pos.y), e.pos.y + e.vy * dt);
     if (!e.hitDone && Math.hypot(TG.pos.x - e.pos.x, TG.pos.z - e.pos.z) < 1.4 && Math.abs(TG.pos.y - e.pos.y) < 1.5) { e.hitDone = true; hurtTarget(10, e.pos); }
     faceTo(e, Math.atan2(e.vel.x, e.vel.z), dt, 12);
   } else if (e.state === 'shoot') {
@@ -262,7 +262,7 @@ function updateWalker(e, dt) {
     if (sp > 0.3) faceTo(e, Math.atan2(e.vel.x, e.vel.z), dt);
     relocateIfStuck(e, st.d, dt);
   }
-  if (e.leap <= 0) e.pos.y = damp(e.pos.y, groundH(e.pos.x, e.pos.z), 20, dt);
+  if (e.leap <= 0) e.pos.y = damp(e.pos.y, groundH(e.pos.x, e.pos.z, e.pos.y), 20, dt);
   animateWalker(e, dt);
 }
 function animateWalker(e, dt) {
@@ -351,7 +351,7 @@ function updateBolts(dt) {
     let hit = b.life <= 0;
     const pd = Math.hypot(P.pos.x - b.pos.x, P.pos.y + 1.0 - b.pos.y, P.pos.z - b.pos.z);
     if (!hit && pd < 0.65 + b.r) { damagePlayer(b.dmg, b.pos); hit = true; }
-    if (!hit && (pointSolid(b.pos.x, b.pos.y, b.pos.z) || b.pos.y < groundH(b.pos.x, b.pos.z))) {
+    if (!hit && (pointSolid(b.pos.x, b.pos.y, b.pos.z) || b.pos.y < groundH(b.pos.x, b.pos.z, b.pos.y))) {
       hit = true;
     }
     if (hit) {

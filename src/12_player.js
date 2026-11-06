@@ -87,7 +87,7 @@ function updatePlayer(dt) {
   if (isWater(_pp.x, _pp.z)) { if (!isWater(_pp.x, P.pos.z)) _pp.z = P.pos.z; else if (!isWater(P.pos.x, _pp.z)) _pp.x = P.pos.x; else { _pp.x = P.pos.x; _pp.z = P.pos.z; } }
   P.pos.x = clamp(_pp.x, PLAY.x0, PLAY.x1); P.pos.z = clamp(_pp.z, PLAY.z0, PLAY.z1);
   P.pos.y += P.vel.y * dt;
-  const gh = groundH(P.pos.x, P.pos.z);
+  const gh = groundH(P.pos.x, P.pos.z, P.pos.y);
   if (P.pos.y <= gh) {
     if (!P.onGround && P.vel.y < -5) { P.land = Math.min(1, -P.vel.y / 12); AUDIO.land(); }
     P.pos.y = gh; P.vel.y = 0; P.onGround = true;

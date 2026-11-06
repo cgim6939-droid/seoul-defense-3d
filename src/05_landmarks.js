@@ -95,7 +95,18 @@ function buildNamsan() {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   geo.computeVertexNormals();
-  const hill = new THREE.Mesh(geo, stdMat(0xffffff, 1, 0, { vertexColors: true }));
+  const hillMat = stdMat(0xffffff, 1, 0, { vertexColors: true });
+  // 터널 입구: 산 경사면이 도로를 막지 않도록 입구 아래쪽(천장 높이 이하)을 뚫는다
+  let cut = '';
+  for (const cr of CROSSINGS) {
+    const lat = cr.axis === 'v' ? 'vWP.x' : 'vWP.z', al = cr.axis === 'v' ? 'vWP.z' : 'vWP.x', W = (RH + 1.6).toFixed(1);
+    cut += `if (abs(${lat} - ${cr.c.toFixed(1)}) < ${W} && ((${al} > ${(cr.a0 - 1.5).toFixed(1)} && ${al} < ${(cr.a0 + 1.5).toFixed(1)}) || (${al} > ${(cr.a1 - 1.5).toFixed(1)} && ${al} < ${(cr.a1 + 1.5).toFixed(1)}))) discard;\n`;
+  }
+  hillMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP;').replace('void main() {', 'void main() {\n  if (vWP.y < 7.6) {\n' + cut + '  }');
+  };
+  const hill = new THREE.Mesh(geo, hillMat);
   hill.position.set(NAMSAN.x, 0, NAMSAN.z); hill.receiveShadow = true; hill.castShadow = true;
   scene.add(hill);
   // 숲
@@ -105,20 +116,32 @@ function buildNamsan() {
     if (d < 20 || hillH(x, z) < 1.5) continue;
     addTree(x, z, rr(0.9, 1.5), 'mountain', chance(0.3) ? 'pine' : 'broad');
   }
-  // 터널 입구
   const b = new Batch();
-  for (const cr of CROSSINGS) for (const end of [cr.a0, cr.a1]) {
-    const out = end === cr.a0 ? -1 : 1;
-    const along = end + out * 0.5;
-    const px = cr.axis === 'v' ? cr.c : along, pz = cr.axis === 'v' ? along : cr.c;
-    const ry = cr.axis === 'v' ? 0 : Math.PI / 2;
-    const off = (lx) => cr.axis === 'v' ? [px + lx, pz] : [px, pz + lx];
-    for (const s of [-1, 1]) { const [x, z] = off(s * (RH + 1.5)); b.box(M.concrete, cr.axis === 'v' ? 3 : 3, 9, 3, x, 4.5, z, ry); }
-    const [tx, tz] = off(0); b.box(M.concrete, cr.axis === 'v' ? ROAD_W + 6 : 3, 2.5, cr.axis === 'v' ? 3 : ROAD_W + 6, tx, 7.75, tz);
-    const [dx, dz] = cr.axis === 'v' ? [px, pz - out * 1.2] : [px - out * 1.2, pz];
-    b.box(M.black, cr.axis === 'v' ? ROAD_W + 1 : 0.2, 6.6, cr.axis === 'v' ? 0.2 : ROAD_W + 1, dx, 3.3, dz);
-    if (cr.axis === 'v') addBox(px - RH - 3, pz - 1.5, px + RH + 3, pz + 1.5, 9);
-    else addBox(px - 1.5, pz - RH - 3, px + 1.5, pz + RH + 3, 9);
+  // 터널: 입구 틀 + 내부(벽 · 천장 · 조명). 입구는 열려 있고 벽만 충돌한다.
+  const wallM = stdMat(0x8d8a82, 0.9, 0, { emissive: 0x3a3630, emissiveIntensity: 1 });
+  const lampM = new THREE.MeshBasicMaterial({ color: 0xfff0c8 });
+  const CEIL = 7.2;
+  for (const cr of CROSSINGS) {
+    const v = cr.axis === 'v', len = cr.a1 - cr.a0, mid = (cr.a0 + cr.a1) / 2;
+    const P2 = (lat, al) => v ? [cr.c + lat, al] : [al, cr.c + lat];
+    const S2 = (wl, wa) => v ? [wl, wa] : [wa, wl];     // [가로(x), 세로(z)] 크기
+    for (const s of [-1, 1]) {                           // 옆벽
+      const [x, z] = P2(s * (RH + 0.5), mid), [w, d] = S2(1, len);
+      b.box(wallM, w, CEIL, d, x, CEIL / 2, z);
+      const [bx0, bz0] = P2(s * (RH + 1.5), mid), [bw, bd] = S2(3, len + 4.4);
+      addBox(bx0 - bw / 2, bz0 - bd / 2, bx0 + bw / 2, bz0 + bd / 2, 10);
+    }
+    { const [x, z] = P2(0, mid), [w, d] = S2(ROAD_W + 2, len); b.box(wallM, w, 0.4, d, x, CEIL, z); }   // 천장
+    for (let a = cr.a0 + 8; a < cr.a1 - 4; a += 14) {      // 천장 조명
+      const [x, z] = P2(0, a), [w, d] = S2(1.4, 3.4); b.box(lampM, w, 0.12, d, x, CEIL - 0.26, z);
+      for (const s of [-1, 1]) { const [lx, lz] = P2(s * (RH - 0.4), a), [lw, ld] = S2(0.2, 3.4); b.box(lampM, lw, 0.3, ld, lx, 3.2, lz); }
+    }
+    for (const end of [cr.a0, cr.a1]) {                    // 입구 틀
+      const out = end === cr.a0 ? -1 : 1, al = end + out * 0.4;
+      for (const s of [-1, 1]) { const [x, z] = P2(s * (RH + 1.5), al), [w, d] = S2(3, 3.4); b.box(M.concrete, w, 10, d, x, 5, z); }
+      const [tx, tz] = P2(0, al), [tw, td] = S2(ROAD_W + 6, 3.4);   // 입구 위 벽(산 비탈을 가린다)
+      b.box(M.concrete, tw, 8.4, td, tx, CEIL + 4.2, tz);
+    }
   }
   // N서울타워
   const base = NAMSAN.h - 0.8, X = NAMSAN.x, Z = NAMSAN.z;

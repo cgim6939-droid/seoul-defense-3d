@@ -266,6 +266,8 @@ window.__SD = {
   key: (code, on) => { keys[code] = on; },
   toCar: () => { let b = null, bd = 1e9; for (const ln of LANES) for (const c of ln.cars) { const d = Math.hypot(c.x - 880, c.z - 330); if (d < bd) { bd = d; b = c; } } P.pos.set(b.x + 2, 0, b.z); return [b.x, b.z]; },
   drive: () => !!DRIVE.car,
+  tunnels: () => JSON.stringify(CROSSINGS),
+  gh: (x, z, y) => groundH(x, z, y),
   carsNear: () => { const o = []; for (const ln of LANES) for (const c of ln.cars) { if (Math.abs(c.x - 800) < 150 && Math.abs(c.z - 340) < 150) o.push(c.uid + ':' + c.x.toFixed(0) + ',' + c.z.toFixed(0)); } return o.sort().join(' '); },
   mpHost: (n, m, c) => netHost(n || 'Host', m || 2, c).then(() => NET.code),
   mpJoin: (c, n) => netJoin(c, n || 'Guest').then(() => 'joined'),

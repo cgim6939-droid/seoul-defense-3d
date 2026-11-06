@@ -180,10 +180,22 @@ function hillH(x, z) {
   }
   return h;
 }
-function groundH(x, z) {
+// 터널 안(도로 폭 · 천장 아래)인가?
+const TUNNEL_TOP = 6.8;
+function inTunnel(x, z) {
+  for (const c of CROSSINGS) {
+    const d = c.axis === 'v' ? Math.abs(x - c.c) : Math.abs(z - c.c), a = c.axis === 'v' ? z : x;
+    if (d < RH + 1.5 && a > c.a0 && a < c.a1) return true;
+  }
+  return false;
+}
+function groundH(x, z, y = 0) {
   let h = 0;
   const dx = x - NAMSAN.x, dz = z - NAMSAN.z;
-  if (dx * dx + dz * dz < NAMSAN.r * NAMSAN.r) h = Math.max(h, hillH(x, z));
+  if (dx * dx + dz * dz < NAMSAN.r * NAMSAN.r) {
+    h = Math.max(h, hillH(x, z));
+    if (h > 0 && y < TUNNEL_TOP && inTunnel(x, z)) h = 0;   // 터널 속에서는 산이 아니라 도로 위
+  }
   for (const p of PLATFORMS) if (x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1) h = Math.max(h, p.h);
   return h;
 }
@@ -325,7 +337,7 @@ function raycastWorld(o, d, maxT) {
     const tEnd = Math.min(best, maxT);
     for (let t = 0.5; t < tEnd; t += 1.2) {
       const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t;
-      if (y < groundH(x, z)) { best = t; kind = 'ground'; RAY.normal.set(0, 1, 0); break; }
+      if (y < groundH(x, z, y)) { best = t; kind = 'ground'; RAY.normal.set(0, 1, 0); break; }
     }
   }
   RAY.t = best; RAY.kind = kind;

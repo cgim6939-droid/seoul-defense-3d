@@ -22,7 +22,7 @@ function treeColor(mix) {
   return pick(TREE_COLS[set]);
 }
 function addTree(x, z, s = 1, mix = 'street', kind = 'broad') {
-  TREES.push({ x, z, s, c: kind === 'pine' ? pick(['#2f5a2b', '#36622e', '#2a4f27']) : treeColor(mix), kind, y: groundH(x, z) });
+  TREES.push({ x, z, s, c: kind === 'pine' ? pick(['#2f5a2b', '#36622e', '#2a4f27']) : treeColor(mix), kind, y: groundH(x, z, 99) });   // 터널 위에서는 산 위에 선다
 }
 function addBuilding(type, x0, z0, x1, z1, h, color, y0 = 0, collide = true) {
   const b = { x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0, d: z1 - z0, h, y0, c: color, type };
