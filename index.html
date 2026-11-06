@@ -4987,11 +4987,7 @@ const NET = {
   players: [], remotes: new Map(), toff: 0, tr: 0, eid: 1, pid: 1, ps: 0, sn: 0, st: 0, myName: '', err: '', ready: false, slot: 0,
 };
 const NET_PREFIX = 'sdef3d-';
-// 서로 다른 와이파이/통신사끼리도 연결되도록 STUN + 공개 TURN 중계 서버를 함께 쓴다
-const NET_OPTS = () => ({ debug: 0, config: { iceServers: [
-  { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
-], iceCandidatePoolSize: 4 } });
+const NET_OPTS = () => ({});
 const SLOT_COLORS = ['#4da3ff', '#ffb347', '#7dff9a', '#ff7de0'];
 let TG = { pos: P.pos, vel: P.vel, remote: null };   // 지금 AI가 노리는 대상
 const TYPE_CODE = ['grunt', 'runner', 'drone', 'brute', 'boss'];
@@ -5006,14 +5002,66 @@ function netSend(conn, m) { try { if (conn && conn.open) conn.send(m); } catch (
 function netBcast(m, exceptId) { for (const [id, c] of NET.conns) if (id !== exceptId) netSend(c, m); }
 function netToHost(m) { netSend(NET.hostConn, m); }
 function netSendTo(id, m) { netSend(NET.conns.get(id), m); }
-function loadPeerLib() {
-  return new Promise((res, rej) => {
-    if (window.Peer) return res();
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
-    s.onload = () => res(); s.onerror = () => rej(new Error('연결 라이브러리를 불러오지 못했어요. 인터넷을 확인해 주세요.'));
-    document.head.appendChild(s);
-  });
+// ---------- 중계 서버(WebSocket) 연결: PeerJS와 같은 모양의 작은 어댑터 ----------
+const RELAY = 'wss://sdef3d-relay.treasure-language.workers.dev';
+function loadPeerLib() { return Promise.resolve(); }
+class Emitter {
+  constructor() { this._h = {}; }
+  on(k, f) { (this._h[k] = this._h[k] || []).push(f); return this; }
+  emit(k, ...a) { for (const f of (this._h[k] || []).slice()) { try { f(...a); } catch (e) { console.error(e); } } }
+}
+class RConn extends Emitter {
+  constructor(peerId, sendFn) { super(); this.peer = peerId; this.open = false; this._send = sendFn; }
+  send(m) { this._send(JSON.stringify(m)); }
+  close() { if (this.open) { this.open = false; this.emit('close'); } if (this._closeFn) this._closeFn(); }
+  _recv(raw) { let m; try { m = JSON.parse(raw); } catch (e) { return; } this.emit('data', m); }
+}
+class Peer extends Emitter {
+  constructor(a) {
+    super();
+    this.dead = false; this.conns = new Map();
+    if (typeof a === 'string') this._host(a.slice(NET_PREFIX.length));
+    else { this.id = 'G' + Math.random().toString(36).slice(2, 8); setTimeout(() => this.emit('open', this.id), 0); }
+  }
+  _ws(code, role, id) {
+    const ws = new WebSocket(`${RELAY}/room/${code}?role=${role}&id=${id || ''}`);
+    const ping = setInterval(() => { try { if (ws.readyState === 1) ws.send('{"t":"ping"}'); } catch (e) {} }, 20000);
+    ws.addEventListener('close', () => clearInterval(ping));
+    return ws;
+  }
+  _host(code) {
+    const ws = this.ws = this._ws(code, 'host');
+    ws.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (m.t === 'open') this.emit('open', this.id = NET_PREFIX + code);
+      else if (m.t === 'err') this.emit('error', { type: m.why === 'taken' ? 'unavailable-id' : 'server-error' });
+      else if (m.t === 'join') {
+        const c = new RConn(m.id, (d) => { if (ws.readyState === 1) ws.send(JSON.stringify({ to: m.id, d })); });
+        c._closeFn = () => { this.conns.delete(m.id); };
+        this.conns.set(m.id, c); this.emit('connection', c);
+        setTimeout(() => { c.open = true; c.emit('open'); }, 0);
+      } else if (m.t === 'leave') { const c = this.conns.get(m.id); if (c) { this.conns.delete(m.id); c.open = false; c.emit('close'); } }
+      else if (m.t === 'd') { const c = this.conns.get(m.from); if (c) c._recv(m.d); }
+    };
+    ws.onerror = () => { if (!this.dead) this.emit('error', { type: 'network' }); };
+    ws.onclose = () => { if (!this.dead) this.emit('disconnected'); };
+  }
+  connect(hostId) {
+    const code = hostId.slice(NET_PREFIX.length), ws = this.ws = this._ws(code, 'guest', this.id);
+    const c = new RConn(hostId, (d) => { if (ws.readyState === 1) ws.send(d); });
+    c._closeFn = () => { try { ws.close(); } catch (e) {} };
+    ws.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      if (m.t === 'open') { c.open = true; c.emit('open'); }
+      else if (m.t === 'err') this.emit('error', { type: m.why === 'nohost' ? 'peer-unavailable' : 'server-error' });
+      else if (m.t === 'd') c._recv(m.d);
+    };
+    ws.onerror = () => { if (!this.dead) this.emit('error', { type: 'network' }); };
+    ws.onclose = () => { if (c.open) { c.open = false; c.emit('close'); } };
+    return c;
+  }
+  reconnect() {}
+  destroy() { this.dead = true; try { if (this.ws) this.ws.close(); } catch (e) {} }
 }
 const rndCode = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[(Math.random() * 32) | 0]).join('');
 function netCleanup() {
